@@ -37,13 +37,17 @@ describe('buildPlanSheet', () => {
     expect(byLabel['เงินเดือน']).toEqual([20000, 20000])
     expect(byLabel['ค่าไฟ (ประมาณ)']).toEqual([null, 2468.02])
     expect(byLabel['เลิกแล้ว']).toBeUndefined() // ไม่มียอดในช่วงที่ export
-    expect(byLabel['จ่ายรายวัน']).toEqual([0, 170.5])
-    expect(byLabel['คงเหลือ']).toEqual([20000, 17361.48])
+    // รอบ ก.ย. ใช้จ่ายช่วง ต.ค. (รายจ่าย ต.ค. 170.50 + เก็บ 3 ต.ค. 500) · รอบ ต.ค. ใช้ช่วง พ.ย. (ยังไม่มี)
+    expect(byLabel['แผนเหลือไว้ใช้เดือนหน้า']).toEqual([20000, 17531.98])
     expect(byLabel['คงเหลือจริง']).toEqual([4321.09, null])
-    expect(byLabel['งบใช้จ่าย']).toEqual([null, 6000]) // ก.ย. ไม่มีงบ, ต.ค. ตั้ง 6,000
-    expect(byLabel['เก็บระหว่างเดือน']).toEqual([100, 500])
+    expect(byLabel['เงินเกินแผน']).toEqual([4321.09 - 20000, null])
     expect(byLabel['แยกเก็บตอนปิดเดือน']).toEqual([3000, 0])
-    expect(byLabel['รายได้เพิ่ม']).toEqual([4321.09 + 100 - 20000, null])
+    expect(byLabel['เงินตั้งต้น']).toEqual([1321.09, 17531.98])
+    expect(byLabel['ใช้รายวัน']).toEqual([170.5, 0])
+    expect(byLabel['เก็บระหว่างเดือน']).toEqual([500, 0])
+    expect(byLabel['เงินรอบนี้เหลือ'][0]).toBeCloseTo(650.59, 2)
+    expect(byLabel['งบใช้จ่ายที่ตั้งไว้']).toEqual([6000, 6000]) // ต.ค. ตั้ง 6,000 → พ.ย. ใช้ต่อ
+    expect(byLabel['คงเหลือ']).toBeUndefined()
     expect(byLabel['ส่วนต่าง']).toBeUndefined()
   })
 })

@@ -2,7 +2,7 @@ import type { Repo } from '../data/repo'
 import { effectiveBudget } from '../domain/budget'
 import { summarizeMonth } from '../domain/calc'
 import { savingsTotal } from '../domain/savings'
-import { bangkokToday, monthEndDate, monthLabel, monthStartDate } from '../domain/month'
+import { addMonths, bangkokToday, monthEndDate, monthLabel, monthStartDate } from '../domain/month'
 import type { Category, MonthEntry, MonthRecord, RecurringItem, Saving, Transaction, UserSettings } from '../domain/types'
 
 type Cell = string | number | null
@@ -37,14 +37,17 @@ export function buildPlanSheet(d: ExportData): Cell[][] {
     ['จ่ายประจำ'],
     ...rowsFor('expense'),
     ['รวมจ่ายประจำ', ...sums.map((s) => baht(s.fixedExpense))],
-    ['จ่ายรายวัน', ...sums.map((s) => baht(s.daily))],
-    ['งบใช้จ่าย', ...months.map((m) => money(effectiveBudget(m, d.records)))],
-    [],
-    ['คงเหลือ', ...sums.map((s) => baht(s.remaining))],
-    ['เก็บระหว่างเดือน', ...sums.map((s) => baht(s.savedDeposits))],
+    ['แผนเหลือไว้ใช้เดือนหน้า', ...sums.map((s) => baht(s.planLeft))],
     ['คงเหลือจริง', ...sums.map((s) => money(s.actualBalance))],
-    ['รายได้เพิ่ม', ...sums.map((s) => money(s.diff))],
+    ['เงินเกินแผน', ...sums.map((s) => money(s.diff))],
     ['แยกเก็บตอนปิดเดือน', ...sums.map((s) => baht(s.savedAtClose))],
+    [],
+    ['ใช้จ่ายเดือนถัดไป'],
+    ['เงินตั้งต้น', ...sums.map((s) => baht(s.startMoney))],
+    ['ใช้รายวัน', ...sums.map((s) => baht(s.daily))],
+    ['เก็บระหว่างเดือน', ...sums.map((s) => baht(s.savedDeposits))],
+    ['เงินรอบนี้เหลือ', ...sums.map((s) => baht(s.left))],
+    ['งบใช้จ่ายที่ตั้งไว้', ...months.map((m) => money(effectiveBudget(addMonths(m, 1), d.records)))],
   ]
 }
 

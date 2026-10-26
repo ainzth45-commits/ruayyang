@@ -52,19 +52,25 @@ export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKe
       <PageHeader eyebrow="03 — Monthly plan" title="แผนเดือน" sub={monthLabel(month, { long: true })} right={<MonthSwitcher month={month} onChange={onMonth} />} />
 
       <div className="boxes" style={{ marginBottom: 12 }}>
-        <div className="box"><div className="l">คงเหลือ</div><div className={`v ${s.remaining < 0 ? 'neg' : 'gold'}`}>{formatBaht(s.remaining)}</div><div className="s">รับ − จ่ายประจำ − รายวัน</div></div>
-        <div className="box"><div className="l">รายได้เพิ่ม</div><div className={`v ${s.diff === null ? '' : s.diff >= 0 ? 'pos' : 'neg'}`}>{s.diff === null ? '—' : `${s.diff > 0 ? '+' : ''}${formatBaht(s.diff)}`}</div><div className="s">{s.diff === null ? 'รู้ผลตอนปิดเดือน' : 'คงเหลือจริง + เก็บ − คงเหลือ'}</div></div>
+        <div className="box"><div className="l">แผนเหลือไว้ใช้ {monthLabel(s.spendMonth)}</div><div className={`v ${s.planLeft < 0 ? 'neg' : 'gold'}`}>{formatBaht(s.planLeft)}</div><div className="s">รับ − จ่ายประจำ</div></div>
+        <div className="box"><div className="l">เงินเกินแผน</div><div className={`v ${s.diff === null ? '' : s.diff >= 0 ? 'pos' : 'neg'}`}>{s.diff === null ? '—' : `${s.diff > 0 ? '+' : ''}${formatBaht(s.diff)}`}</div><div className="s">{s.diff === null ? 'รู้ผลตอนปิดเดือน' : 'คงเหลือจริง − แผนเหลือ'}</div></div>
       </div>
 
       <div className="panel" style={{ padding: '8px 20px' }}>
         <div className="ledger-line"><span>รายรับ</span><Money v={s.income} /></div>
-        <div className="ledger-line"><span>จ่ายประจำ</span><Money v={s.fixedExpense} /></div>
-        <div className="ledger-line"><span>จ่ายรายวัน</span><Money v={s.daily} /></div>
-        <div className="ledger-line total"><span>คงเหลือ</span><Money v={s.remaining} className={s.remaining < 0 ? 'neg' : ''} /></div>
-        {s.savedDeposits > 0 && <div className="ledger-line"><span>เก็บระหว่างเดือน</span><Money v={s.savedDeposits} /></div>}
+        <div className="ledger-line"><span>จ่ายประจำ</span><Money v={-s.fixedExpense} /></div>
+        <div className="ledger-line total"><span>แผนเหลือไว้ใช้ {monthLabel(s.spendMonth)}</span><Money v={s.planLeft} className={s.planLeft < 0 ? 'neg' : ''} /></div>
         {/* key: รีเซ็ต state เมื่อเปลี่ยนเดือน/ค่าเปลี่ยน กันยอดเดือนก่อนค้างไปบันทึกทับเดือนใหม่ */}
         <ActualBalance key={`${month}-${s.actualBalance}`} month={month} value={s.actualBalance} />
-        {s.savedAtClose > 0 && <div className="ledger-line"><span>แยกเก็บตอนปิดเดือน</span><Money v={s.savedAtClose} /></div>}
+        {s.savedAtClose > 0 && <div className="ledger-line"><span>แยกเก็บตอนปิดเดือน</span><Money v={-s.savedAtClose} /></div>}
+      </div>
+
+      <div className="section-head" style={{ marginTop: 22 }}><h2>ใช้จ่ายช่วง {monthLabel(s.spendMonth, { long: true })}</h2></div>
+      <div className="panel cycle" style={{ padding: '8px 20px' }}>
+        <div className="ledger-line"><span>เงินตั้งต้น{s.actualBalance === null ? ' (ตามแผน)' : ''}</span><Money v={s.startMoney} /></div>
+        <div className="ledger-line"><span>ใช้รายวัน</span><Money v={-s.daily} /></div>
+        {s.savedDeposits > 0 && <div className="ledger-line"><span>เก็บระหว่างเดือน</span><Money v={-s.savedDeposits} /></div>}
+        <div className="ledger-line total"><span>เงินรอบนี้เหลือ</span><Money v={s.left} className={s.left < 0 ? 'neg' : 'pos'} /></div>
       </div>
 
       <button className="btn primary" style={{ marginTop: 12 }} onClick={() => setClosing(true)}>
@@ -287,15 +293,15 @@ function YearSheet({ current, onPick, onClose }: { current: MonthKey; onPick: (m
         <div className="empty">กำลังคำนวณ…</div>
       ) : (
         <table className="ytable">
-          <thead><tr><th>เดือน</th><th>คงเหลือ</th><th>คงเหลือจริง</th><th>รายได้เพิ่ม</th><th>เก็บ</th></tr></thead>
+          <thead><tr><th>รอบ</th><th>แผนเหลือ</th><th>คงเหลือจริง</th><th>เกินแผน</th><th>เก็บ</th></tr></thead>
           <tbody>
             {data.map((s) => (
               <tr key={s.month} className={s.month === current ? 'current' : ''} onClick={() => onPick(s.month)}>
                 <td style={{ fontFamily: 'var(--font)' }}>{monthLabel(s.month)}</td>
-                <td className={s.remaining < 0 ? 'neg' : ''}>{formatBaht(s.remaining)}</td>
+                <td className={s.planLeft < 0 ? 'neg' : ''}>{formatBaht(s.planLeft)}</td>
                 <td>{s.actualBalance === null ? '—' : formatBaht(s.actualBalance)}</td>
                 <td className={s.diff === null ? 'muted' : s.diff >= 0 ? 'pos' : 'neg'}>{s.diff === null ? '—' : formatBaht(s.diff)}</td>
-                <td className={s.savedDeposits + s.savedAtClose > 0 ? 'pos' : 'muted'}>{s.savedDeposits + s.savedAtClose > 0 ? formatBaht(s.savedDeposits + s.savedAtClose, { decimals: false }) : '—'}</td>
+                <td className={s.savedAtClose > 0 ? 'pos' : 'muted'}>{s.savedAtClose > 0 ? formatBaht(s.savedAtClose, { decimals: false }) : '—'}</td>
               </tr>
             ))}
           </tbody>

@@ -88,7 +88,7 @@ function Shell({ backend }: { backend: Backend }) {
     <div className="app">
       <Brandbar />
       <main className="scroller" ref={scroller}>
-        {tab === 'home' && <Home onOpenPlan={() => { setPlanMonth(monthOf(bangkokToday())); go('plan') }} />}
+        {tab === 'home' && <Home onOpenPlan={(m) => { setPlanMonth(m ?? monthOf(bangkokToday())); go('plan') }} />}
         {tab === 'daily' && <Daily />}
         {tab === 'plan' && <Plan month={planMonth} onMonth={setPlanMonth} />}
         {tab === 'settings' && <Settings />}

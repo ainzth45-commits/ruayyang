@@ -330,6 +330,14 @@ html.kb-open .sheet { padding-bottom: 16px; }
 .savings-card .s b { font-family: var(--f-tech); color: var(--holo); font-weight: 600; }
 button.savings-card:active { transform: scale(.99); }
 
+.cycle-card { display: block; width: 100%; text-align: left; margin-top: 16px; padding: 16px 18px 14px; border-radius: 24px; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); }
+.cycle-card:active { transform: scale(.99); }
+.cycle-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.cycle-top .l { font-size: 13px; color: var(--muted); }
+.cycle-top .v { font-family: var(--f-tech); font-weight: 600; font-size: 22px; color: var(--gold-2); font-variant-numeric: tabular-nums; }
+.cycle-top .v.neg { color: var(--bad); }
+.cycle-card .bar { margin-top: 8px; }
+.cycle-sub { font-size: 12px; color: var(--dim); margin-top: 8px; }
 .notice.closing { margin-top: 0; margin-bottom: 16px; background: var(--holo-soft); color: var(--holo); border-color: rgba(15, 127, 143, .3); }
 .notice.closing .muted { color: var(--holo); }
 .notice.closing > span { flex: 1; }

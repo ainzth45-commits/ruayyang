@@ -38,9 +38,10 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
   const isNeg = negative ?? (balInit !== null && balInit < 0)
   const bal = parseMoneyInput(balStr, { allowZero: true })
   const actual = bal.ok ? (isNeg ? -bal.value : bal.value) : null
-  const planLeft = s.income - s.fixedExpense
-  const extra = actual === null ? null : actual + s.savedDeposits - s.remaining
-  const saveDefault = s.savedAtClose > 0 ? s.savedAtClose : Math.max(0, actual ?? 0)
+  const planLeft = s.planLeft
+  const extra = actual === null ? null : actual - planLeft
+  // ค่าเริ่ม 0: คงเหลือจริงคือเงินตั้งต้นใช้เดือนหน้า ถ้าแยกเก็บหมดจะไม่เหลือใช้
+  const saveDefault = s.savedAtClose
   const saveStr = saveText ?? formatBaht(saveDefault)
   const save = parseMoneyInput(saveStr, { allowZero: true })
 
@@ -82,7 +83,7 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
 
       {step === 1 && (
         <>
-          <p className="muted step-lead">เงินที่เหลือของเดือนนี้ หลังจ่ายทุกอย่างแล้ว (ก่อนแยกเก็บ)</p>
+          <p className="muted step-lead">เงินในบัญชีหลังรับเงินเดือนและจ่ายบิลครบแล้ว (ก่อนแยกเก็บ) = เงินตั้งต้นใช้ {monthLabel(s.spendMonth)}</p>
           <div className={`amount-box ${balStr && !bal.ok ? 'err' : ''}`}>
             <label htmlFor="close-balance">คงเหลือจริง (บาท)</label>
             <div className="amount-row">
@@ -100,23 +101,23 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
 
       {step === 2 && actual !== null && (
         <div className="panel" style={{ padding: '8px 20px' }}>
-          <div className="ledger-line"><span>แผนเหลือ (รับ − ประจำ)</span><Money v={planLeft} /></div>
-          <div className="ledger-line"><span>ใช้รายวัน</span><Money v={-s.daily} /></div>
-          <div className="ledger-line"><span>เก็บระหว่างเดือน</span><Money v={-s.savedDeposits} /></div>
+          <div className="ledger-line"><span>รายรับ</span><Money v={s.income} /></div>
+          <div className="ledger-line"><span>จ่ายประจำ</span><Money v={-s.fixedExpense} /></div>
+          <div className="ledger-line"><span>แผนเหลือไว้ใช้ {monthLabel(s.spendMonth)}</span><Money v={planLeft} /></div>
           <div className="ledger-line"><span>คงเหลือจริง</span><Money v={actual} /></div>
           <div className="ledger-line total">
-            <span>รายได้เพิ่มเดือนนี้</span>
+            <span>เงินเกินแผน</span>
             <Money v={extra ?? 0} className={extra !== null && extra < 0 ? 'neg' : 'pos'} />
           </div>
           <p className="muted" style={{ fontSize: 12, margin: '8px 0 6px' }}>
-            = คงเหลือจริง + เก็บระหว่างเดือน − (แผนเหลือ − ใช้รายวัน)
+            = คงเหลือจริง − แผนเหลือ (รายได้เสริม + เงินที่เหลือจากรอบก่อน)
           </p>
         </div>
       )}
 
       {step === 3 && (
         <>
-          <p className="muted step-lead">ย้ายไปเก็บเท่าไหร่ (ใส่ 0 ได้ถ้าเดือนนี้ไม่เก็บ)</p>
+          <p className="muted step-lead">ย้ายไปเก็บเท่าไหร่ ที่เหลือคือเงินใช้ {monthLabel(s.spendMonth)}</p>
           <div className={`amount-box holo ${save.ok ? '' : 'err'}`}>
             <label htmlFor="close-save">แยกเก็บ (บาท)</label>
             <div className="amount-row">
@@ -125,8 +126,18 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
             </div>
           </div>
           {!save.ok && <div className="err-text" style={{ marginTop: -10, marginBottom: 12 }}>{save.error}</div>}
-          {actual !== null && save.ok && save.value > Math.max(0, actual) && (
-            <div className="warn">ยอดแยกเก็บมากกว่าคงเหลือจริง — ถ้าตั้งใจก็บันทึกได้</div>
+          {actual !== null && (
+            <div className="chips" style={{ margin: '-4px -20px 12px' }}>
+              <button type="button" className="chip-btn" onClick={() => setSaveText('0')}>ไม่เก็บ</button>
+              {extra !== null && extra > 0 && <button type="button" className="chip-btn" onClick={() => setSaveText(formatBaht(extra))}>เงินเกินแผน <b>{formatBaht(extra)}</b></button>}
+              {actual > 0 && <button type="button" className="chip-btn" onClick={() => setSaveText(formatBaht(actual))}>ทั้งหมด <b>{formatBaht(actual)}</b></button>}
+            </div>
+          )}
+          {actual !== null && save.ok && (
+            <div className="ledger-line total" style={{ borderBottom: 0 }}>
+              <span>เหลือไว้ใช้ {monthLabel(s.spendMonth)}</span>
+              <Money v={actual - save.value} className={actual - save.value < 0 ? 'neg' : 'pos'} />
+            </div>
           )}
         </>
       )}

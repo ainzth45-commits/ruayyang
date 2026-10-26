@@ -1,7 +1,7 @@
 import type { Repo } from '../data/repo'
 import { effectiveBudget } from '../domain/budget'
 import { summarizeMonth, type MonthSummary } from '../domain/calc'
-import { monthEndDate, monthStartDate } from '../domain/month'
+import { addMonths, monthEndDate, monthOf, monthStartDate } from '../domain/month'
 import { ensureMonths } from '../domain/plan'
 import { savingsTotal } from '../domain/savings'
 import type { Category, MonthEntry, MonthKey, MonthRecord, RecurringItem, Satang, Saving, Transaction } from '../domain/types'
@@ -9,7 +9,9 @@ import type { Category, MonthEntry, MonthKey, MonthRecord, RecurringItem, Satang
 export interface MonthData {
   month: MonthKey
   items: RecurringItem[]
+  /** รายการประจำของเดือนนี้ */
   entries: MonthEntry[]
+  /** รายจ่ายรายวันของเดือนนี้ (ตามปฏิทิน) */
   txs: Transaction[]
   categories: Category[]
   /** ทุกเดือนตั้งแต่ต้นจนถึงเดือนนี้ (ใช้หางบที่สืบทอด + เช็กการปิดเดือน) */
@@ -17,37 +19,44 @@ export interface MonthData {
   record: MonthRecord | null
   /** งบใช้จ่ายที่ใช้จริงของเดือนนี้ */
   budget: Satang | null
-  /** เงินเก็บของเดือนนี้ */
+  /** เงินเก็บที่ลงวันที่ในเดือนนี้ */
   savings: Saving[]
   /** เงินเก็บสะสมถึงสิ้นเดือนนี้ */
   savingsTotal: Satang
+  /** รอบเงินเดือนของเดือนนี้ (เงินไว้ใช้เดือนหน้า) */
   summary: MonthSummary
+  /** รอบเดือนก่อน = เงินที่กำลังใช้อยู่ในเดือนนี้ (null ถ้าไม่มีเดือนก่อนในระบบ) */
+  spending: MonthSummary | null
 }
 
 export async function loadMonth(repo: Repo, month: MonthKey): Promise<MonthData> {
   await ensureMonths(repo, month, month)
+  const prev = addMonths(month, -1)
+  const next = addMonths(month, 1)
   const [items, entries, txs, records, categories, allSavings, settings] = await Promise.all([
     repo.listItems(),
-    repo.listEntries(month, month),
-    repo.listTransactions(monthStartDate(month), monthEndDate(month)),
+    repo.listEntries(prev, month),
+    repo.listTransactions(monthStartDate(month), monthEndDate(next)),
     repo.listMonths('2000-01', month),
     repo.listCategories(),
-    repo.listSavings('2000-01-01', monthEndDate(month)),
+    repo.listSavings('2000-01-01', monthEndDate(next)),
     repo.getSettings(),
   ])
   const record = records.find((r) => r.month === month) ?? null
-  const savings = allSavings.filter((s) => s.date >= monthStartDate(month))
+  const prevRecord = records.find((r) => r.month === prev) ?? null
+  const upToMonth = allSavings.filter((s) => s.date <= monthEndDate(month))
   return {
     month,
     items,
-    entries,
-    txs,
+    entries: entries.filter((e) => e.month === month),
+    txs: txs.filter((t) => monthOf(t.date) === month),
     categories,
     records,
     record,
     budget: effectiveBudget(month, records),
-    savings,
-    savingsTotal: savingsTotal(settings.savingsOpening, allSavings),
-    summary: summarizeMonth(month, items, entries, txs, record, savings),
+    savings: allSavings.filter((s) => monthOf(s.date) === month),
+    savingsTotal: savingsTotal(settings.savingsOpening, upToMonth),
+    summary: summarizeMonth(month, items, entries, txs, record, allSavings),
+    spending: prevRecord ? summarizeMonth(prev, items, entries, txs, prevRecord, allSavings) : null,
   }
 }

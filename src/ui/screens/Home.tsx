@@ -19,7 +19,7 @@ import { primeKeyboard } from '../viewport'
 
 type Open = { kind: 'tx'; tx: Transaction } | { kind: 'budget' } | { kind: 'savings' } | { kind: 'close'; month: string } | null
 
-export function Home({ onOpenPlan }: { onOpenPlan: () => void }) {
+export function Home({ onOpenPlan }: { onOpenPlan: (month?: string) => void }) {
   const { repo } = useApp()
   const { run } = useAction()
   const today = bangkokToday()
@@ -40,12 +40,14 @@ export function Home({ onOpenPlan }: { onOpenPlan: () => void }) {
   if (!data) return <div className="page">{header}<div className="empty">กำลังโหลด…</div></div>
 
   const s = data.summary
-  const b = budgetStatus(data.budget, s.daily, month, today)
+  const spent = data.txs.reduce((a, t) => a + t.amount, 0) // ใช้ไปเดือนนี้ (ตามปฏิทิน)
+  const b = budgetStatus(data.budget, spent, month, today)
+  const cyc = data.spending // รอบเดือนก่อน = เงินที่กำลังใช้อยู่
   const todayTxs = data.txs.filter((t) => t.date === today)
   const todayTotal = todayTxs.reduce((a, t) => a + t.amount, 0)
   const catById = new Map(data.categories.map((c) => [c.id, c]))
   const closing = needsClosing(today, data.records)
-  const savedThisMonth = s.savedDeposits + s.savedAtClose
+  const savedThisMonth = data.savings.reduce((a, x) => a + x.amount, 0)
 
   const removeTx = (t: Transaction) =>
     run(async () => {
@@ -91,11 +93,25 @@ export function Home({ onOpenPlan }: { onOpenPlan: () => void }) {
           </div>
           <div className="box">
             <div className="l">ใช้ไปทั้งเดือน</div>
-            <div className="v">{formatBaht(s.daily)}</div>
+            <div className="v">{formatBaht(spent)}</div>
             {data.budget !== null && <div className="s">จากงบ {formatBaht(data.budget, { decimals: false })}</div>}
           </div>
         </div>
       </section>
+
+      {cyc && (
+        <button className="cycle-card" onClick={() => onOpenPlan(cyc.month)}>
+          <div className="cycle-top">
+            <span className="l">เงินรอบ {monthLabel(cyc.month)} เหลือ</span>
+            <span className={`v ${cyc.left < 0 ? 'neg' : ''}`}>{formatBaht(cyc.left)}</span>
+          </div>
+          <div className="bar"><i style={{ width: `${cyc.startMoney > 0 ? Math.min(100, Math.max(0, (cyc.left / cyc.startMoney) * 100)) : 0}%` }} /></div>
+          <div className="cycle-sub">
+            ตั้งต้น {formatBaht(cyc.startMoney, { decimals: false })}{cyc.actualBalance === null ? ' (ตามแผน)' : ''} · ใช้ไป {formatBaht(cyc.daily, { decimals: false })}
+            {cyc.savedDeposits > 0 && <> · เก็บ {formatBaht(cyc.savedDeposits, { decimals: false })}</>}
+          </div>
+        </button>
+      )}
 
       <button className="savings-card" onClick={() => setOpen({ kind: 'savings' })}>
         <span className="glyph holo"><PiggyBank size={22} strokeWidth={1.6} /></span>
@@ -108,7 +124,7 @@ export function Home({ onOpenPlan }: { onOpenPlan: () => void }) {
       </button>
 
       {(s.pendingEstimates > 0 || s.unpaid > 0) && (
-        <button className="notice" onClick={onOpenPlan}>
+        <button className="notice" onClick={() => onOpenPlan()}>
           <CircleAlert size={20} strokeWidth={1.7} />
           <span>
             {s.pendingEstimates > 0 && <>ยอดประมาณ {s.pendingEstimates} รายการ</>}

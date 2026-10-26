@@ -1,23 +1,32 @@
-import { daysInMonth, monthOf } from './month'
+import { addMonths, daysInMonth, monthOf } from './month'
 import type { DateKey, MonthEntry, MonthKey, MonthRecord, RecurringItem, Satang, Saving, Transaction } from './types'
 
+/**
+ * สรุป "รอบเงินเดือน" M (ปิดรอบวันสุดท้ายของ M):
+ * รับเงินเดือน M + จ่ายบิลประจำ M → เงินที่เหลือเอาไว้ใช้ตลอดเดือน M+1 (spendMonth)
+ */
 export interface MonthSummary {
   month: MonthKey
+  /** เดือนที่ใช้เงินของรอบนี้ (M+1) */
+  spendMonth: MonthKey
   income: Satang
   fixedExpense: Satang
-  daily: Satang
-  /** รับ − จ่ายประจำ − จ่ายรายวัน */
-  remaining: Satang
+  /** แผนเหลือไว้ใช้เดือนหน้า = รับ − จ่ายประจำ */
+  planLeft: Satang
+  /** คงเหลือจริงวันสุดท้ายของ M (หลังรับเงินเดือน + จ่ายบิลครบ) */
   actualBalance: Satang | null
-  /** เก็บระหว่างเดือน (ไม่รวมแยกเก็บตอนปิด) */
-  savedDeposits: Satang
-  /** แยกเก็บตอนปิดเดือน */
-  savedAtClose: Satang
-  /**
-   * รายได้เพิ่ม = คงเหลือจริง + เก็บระหว่างเดือน − คงเหลือ (null ถ้ายังไม่กรอกคงเหลือจริง)
-   * ที่มา: รับ + เพิ่ม − ประจำ − รายวัน − เก็บระหว่างเดือน = คงเหลือจริง
-   */
+  /** เงินเกินแผน = คงเหลือจริง − แผนเหลือ (รายได้เสริม + เงินเหลือจากรอบก่อน) · null ถ้ายังไม่กรอก */
   diff: Satang | null
+  /** แยกเก็บตอนปิดรอบ M */
+  savedAtClose: Satang
+  /** เงินตั้งต้นใช้เดือนหน้า = (คงเหลือจริง หรือแผนเหลือถ้ายังไม่กรอก) − แยกเก็บตอนปิด */
+  startMoney: Satang
+  /** รายจ่ายรายวันใน spendMonth */
+  daily: Satang
+  /** เก็บเงินระหว่าง spendMonth */
+  savedDeposits: Satang
+  /** เงินรอบนี้เหลือ = เงินตั้งต้น − ใช้รายวัน − เก็บระหว่างเดือน */
+  left: Satang
   /** รายจ่ายยอดประมาณที่ยังไม่จ่าย */
   pendingEstimates: number
   /** รายจ่ายยอดแน่นอนที่ยังไม่จ่าย */
@@ -39,6 +48,7 @@ export function summarizeMonth(
   record: MonthRecord | null,
   savings: Saving[] = [],
 ): MonthSummary {
+  const spendMonth = addMonths(month, 1)
   const byId = new Map(items.map((i) => [i.id, i]))
   let income = 0
   let fixedExpense = 0
@@ -56,26 +66,30 @@ export function summarizeMonth(
     if (st === 'estimate') pendingEstimates++
     else if (st === 'pending') unpaid++
   }
-  const daily = txs.reduce((s, t) => (monthOf(t.date) === month ? s + t.amount : s), 0)
-  const remaining = income - fixedExpense - daily
-  const actualBalance = record?.actualBalance ?? null
+  const daily = txs.reduce((s, t) => (monthOf(t.date) === spendMonth ? s + t.amount : s), 0)
   let savedDeposits = 0
   let savedAtClose = 0
   for (const sv of savings) {
-    if (monthOf(sv.date) !== month) continue
-    if (sv.kind === 'close') savedAtClose += sv.amount
-    else savedDeposits += sv.amount
+    const m = monthOf(sv.date)
+    if (sv.kind === 'close' && m === month) savedAtClose += sv.amount
+    else if (sv.kind === 'deposit' && m === spendMonth) savedDeposits += sv.amount
   }
+  const planLeft = income - fixedExpense
+  const actualBalance = record?.actualBalance ?? null
+  const startMoney = (actualBalance ?? planLeft) - savedAtClose
   return {
     month,
+    spendMonth,
     income,
     fixedExpense,
-    daily,
-    remaining,
+    planLeft,
     actualBalance,
-    savedDeposits,
+    diff: actualBalance === null ? null : actualBalance - planLeft,
     savedAtClose,
-    diff: actualBalance === null ? null : actualBalance + savedDeposits - remaining,
+    startMoney,
+    daily,
+    savedDeposits,
+    left: startMoney - daily - savedDeposits,
     pendingEstimates,
     unpaid,
   }

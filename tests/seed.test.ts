@@ -20,7 +20,7 @@ describe.skipIf(!has)('import จากชีตจริง', () => {
     expect(records).toHaveLength(seed.months.length)
     for (const rec of records) {
       const s = summarizeMonth(rec.month, items, entries, [], rec)
-      expect(s.remaining, rec.month).toBe(toSatang(seed.expected_remaining[rec.month]))
+      expect(s.planLeft, rec.month).toBe(toSatang(seed.expected_remaining[rec.month]))
     }
   })
 })

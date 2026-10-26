@@ -23,32 +23,38 @@ describe('summarizeMonth', () => {
   ]
   const txs = [tx('2026-10-01', 12_000), tx('2026-10-31', 8_000), tx('2026-11-01', 50_000)]
 
-  it('remaining = income − fixed − daily of that month only', () => {
-    const s = summarizeMonth('2026-10', items, entries, txs, { month: '2026-10', actualBalance: null, spendBudget: null, closedAt: null })
-    expect(s.income).toBe(3_600_000)
-    expect(s.fixedExpense).toBe(1_300_000)
-    expect(s.daily).toBe(20_000)
-    expect(s.remaining).toBe(2_280_000)
+  const rec = (actualBalance: number | null) => ({ month: '2026-10', actualBalance, spendBudget: null, closedAt: null })
+  const sv = (date: string, amount: number, kind: 'deposit' | 'close') => ({ id: date + kind, date, amount, note: null, kind, createdAt: '' })
+
+  it('cycle Oct: plan left = income − fixed of Oct; spending comes from NOVEMBER', () => {
+    const s = summarizeMonth('2026-10', items, entries, txs, rec(null))
+    expect(s).toMatchObject({ spendMonth: '2026-11', income: 3_600_000, fixedExpense: 1_300_000, planLeft: 2_300_000 })
+    expect(s.daily).toBe(50_000) // เฉพาะ พ.ย. — รายจ่าย ต.ค. เป็นของรอบ ก.ย.
     expect(s.diff).toBeNull()
+    expect(s.startMoney).toBe(2_300_000) // ยังไม่กรอกคงเหลือจริง → ใช้แผนเหลือ
+    expect(s.left).toBe(2_250_000)
     expect(s.pendingEstimates).toBe(1)
     expect(s.unpaid).toBe(0) // rent จ่ายแล้ว, power เป็นยอดประมาณ
   })
 
-  it('extra income counts savings during the month but not the month-end set-aside', () => {
-    const sv = (date: string, amount: number, kind: 'deposit' | 'close') => ({ id: date, date, amount, note: null, kind, createdAt: '' })
-    const s = summarizeMonth('2026-10', items, entries, txs, { month: '2026-10', actualBalance: 2_000_000, spendBudget: null, closedAt: null }, [
-      sv('2026-10-05', 300_000, 'deposit'),
-      sv('2026-10-31', 2_000_000, 'close'),
-      sv('2026-09-30', 999, 'deposit'), // คนละเดือน
-    ])
-    expect(s.savedDeposits).toBe(300_000)
-    expect(s.savedAtClose).toBe(2_000_000)
-    expect(s.diff).toBe(2_000_000 + 300_000 - 2_280_000)
+  it('actual balance (after salary + bills) becomes next month start money; diff = actual − plan', () => {
+    const s = summarizeMonth('2026-10', items, entries, txs, rec(2_800_000))
+    expect(s.diff).toBe(500_000)
+    expect(s.startMoney).toBe(2_800_000)
+    expect(s.left).toBe(2_750_000)
   })
 
-  it('diff = actual − remaining (negative allowed)', () => {
-    const s = summarizeMonth('2026-10', items, entries, txs, { month: '2026-10', actualBalance: 2_000_000, spendBudget: null, closedAt: null })
-    expect(s.diff).toBe(-280_000)
+  it('negative diff allowed', () => expect(summarizeMonth('2026-10', items, entries, txs, rec(2_000_000)).diff).toBe(-300_000))
+
+  it('set-aside at close (end of Oct) and deposits during Nov reduce the money left; other months ignored', () => {
+    const s = summarizeMonth('2026-10', items, entries, txs, rec(2_800_000), [
+      sv('2026-10-31', 1_000_000, 'close'),
+      sv('2026-11-05', 300_000, 'deposit'),
+      sv('2026-10-05', 777, 'deposit'), // เก็บระหว่าง ต.ค. = รอบ ก.ย.
+      sv('2026-11-30', 999, 'close'), // ปิดรอบ พ.ย.
+    ])
+    expect(s).toMatchObject({ savedAtClose: 1_000_000, savedDeposits: 300_000, startMoney: 1_800_000, left: 1_800_000 - 50_000 - 300_000 })
+    expect(s.diff).toBe(500_000) // แยกเก็บไม่กระทบเงินเกินแผน
   })
 
   it('entries of unknown/deleted items still count by kind fallback = expense', () => {
