@@ -3,7 +3,7 @@ import { Repeat2, ScanLine } from 'lucide-react'
 import { formatBaht } from '../../domain/money'
 import { addDays, bangkokToday, dateLabel, monthOf } from '../../domain/month'
 import { orderCategories, repeatSuggestions, type RepeatPick } from '../../domain/repeat'
-import type { Satang, Transaction } from '../../domain/types'
+import type { DateKey, Satang, Transaction } from '../../domain/types'
 import { CategoryIcon } from '../icons'
 import { compressImage, sha256Hex } from '../../ocr/image'
 import { readSlipAmount, warmUpOcr } from '../../ocr/ocr'
@@ -22,6 +22,7 @@ interface SlipState {
   scanning: boolean
   progress: number
   ocrAmount: Satang | null
+  ocrDate: DateKey | null
 }
 
 export function AddSheet({ onClose }: { onClose: () => void }) {
@@ -45,7 +46,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
     const file = queue[idx]
     const url = URL.createObjectURL(file)
     let alive = true
-    setSlip({ file, url, hash: null, dup: null, scanning: true, progress: 0, ocrAmount: null })
+    setSlip({ file, url, hash: null, dup: null, scanning: true, progress: 0, ocrAmount: null, ocrDate: null })
     ;(async () => {
       let hash: string | null = null
       let dup: Transaction | null = null
@@ -60,7 +61,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
       setSlip((s) => s && { ...s, hash, dup })
       const r = await readSlipAmount(file, (p) => alive && setSlip((s) => s && { ...s, progress: p }))
       if (!alive) return
-      setSlip((s) => s && { ...s, scanning: false, progress: 1, ocrAmount: r.amount })
+      setSlip((s) => s && { ...s, scanning: false, progress: 1, ocrAmount: r.amount, ocrDate: r.date })
       if (r.amount === null) {
         play('warn')
         toast('อ่านยอดไม่ได้ กรอกเองได้เลย')
@@ -229,9 +230,10 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
       )}
       {slip && !slip.scanning && !slip.dup && categories.length > 0 && (
         <TxForm
-          key={`${idx}-${slip.ocrAmount}`}
+          key={`${idx}-${slip.ocrAmount}-${slip.ocrDate}`}
           categories={categories}
-          initial={{ amount: slip.ocrAmount, date: today, categoryId: null, note: null }}
+          initial={{ amount: slip.ocrAmount, date: slip.ocrDate ?? today, categoryId: null, note: null }}
+          dateLabel={slip.ocrDate ? 'วันที่ (อ่านจากสลิป)' : 'วันที่'}
           busy={busy}
           submitLabel={idx + 1 < queue.length ? 'บันทึก แล้วไปใบถัดไป' : 'บันทึก'}
           autoFocusAmount={slip.ocrAmount === null}

@@ -1,6 +1,8 @@
-import type { Satang } from '../domain/types'
+import { bangkokToday } from '../domain/month'
+import type { DateKey, Satang } from '../domain/types'
 import { prepareForOcr } from './image'
 import { parseSlipAmount } from './parseAmount'
+import { parseSlipDate } from './parseDate'
 
 type TWorker = import('tesseract.js').Worker
 
@@ -34,20 +36,20 @@ export function warmUpOcr(): void {
   getWorker().catch(() => {})
 }
 
-/** อ่านยอดเงินจากรูปสลิป — ไม่ throw เด็ดขาด: พังเมื่อไหร่คืน amount null ให้ผู้ใช้กรอกเอง */
+/** อ่านยอดเงิน + วันที่โอนจากรูปสลิป — ไม่ throw เด็ดขาด: พังเมื่อไหร่คืน null ให้ผู้ใช้กรอกเอง */
 export async function readSlipAmount(
   file: Blob,
   onProgress?: (p: number) => void,
-): Promise<{ amount: Satang | null; text: string }> {
+): Promise<{ amount: Satang | null; date: DateKey | null; text: string }> {
   try {
     const worker = await getWorker()
     const image = await prepareForOcr(file)
     progressCb = onProgress
     const { data } = await worker.recognize(image)
-    return { amount: parseSlipAmount(data.text), text: data.text }
+    return { amount: parseSlipAmount(data.text), date: parseSlipDate(data.text, bangkokToday()), text: data.text }
   } catch (e) {
     console.warn('[ocr] อ่านสลิปไม่สำเร็จ', e)
-    return { amount: null, text: '' }
+    return { amount: null, date: null, text: '' }
   } finally {
     progressCb = undefined
   }

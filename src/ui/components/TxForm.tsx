@@ -23,6 +23,7 @@ export function TxForm(props: {
   footer?: ReactNode
   /** ใต้ช่องยอด เช่น ปุ่มสแกนสลิป */
   amountExtra?: ReactNode
+  dateLabel?: string
 }) {
   const [amountText, setAmountText] = useState(props.initial.amount === null ? '' : formatBaht(props.initial.amount))
   const [date, setDate] = useState(props.initial.date)
@@ -80,7 +81,7 @@ export function TxForm(props: {
       {touched && categoryId === null && <div className="err-text" style={{ marginTop: -8, marginBottom: 12 }}>เลือกหมวดก่อนนะ</div>}
 
       <div className="two">
-        <DateField label="วันที่" value={date} onChange={setDate} />
+        <DateField label={props.dateLabel ?? 'วันที่'} value={date} onChange={setDate} />
         <label className="field">
           <span>โน้ต (ไม่บังคับ)</span>
           <input className="input" {...textInputProps} onKeyDown={blurOnEnter} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="เช่น ข้าวเที่ยง" />
