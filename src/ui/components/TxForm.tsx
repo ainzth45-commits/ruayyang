@@ -4,6 +4,7 @@ import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
 import type { Category, DateKey, Satang } from '../../domain/types'
 import { CategoryIcon } from '../icons'
 import { blurOnEnter, moneyInputProps, textInputProps } from '../inputs'
+import { DateField } from './Pickers'
 
 export interface TxValues {
   amount: Satang
@@ -79,10 +80,7 @@ export function TxForm(props: {
       {touched && categoryId === null && <div className="err-text" style={{ marginTop: -8, marginBottom: 12 }}>เลือกหมวดก่อนนะ</div>}
 
       <div className="two">
-        <label className="field">
-          <span>วันที่</span>
-          <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-        </label>
+        <DateField label="วันที่" value={date} onChange={setDate} />
         <label className="field">
           <span>โน้ต (ไม่บังคับ)</span>
           <input className="input" {...textInputProps} onKeyDown={blurOnEnter} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="เช่น ข้าวเที่ยง" />

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CalendarDays, House, Layers, Plus, Settings2 } from 'lucide-react'
 import { createBackend, type Backend } from '../data'
 import type { AuthUser } from '../data/repo'
-import { bangkokToday, daysInMonth, monthOf } from '../domain/month'
+import { bangkokToday, monthOf } from '../domain/month'
 import { ensureDefaultCategories } from '../domain/plan'
 import type { MonthKey } from '../domain/types'
 import { AddSheet } from './components/AddSheet'
@@ -84,10 +84,9 @@ function Shell({ backend }: { backend: Backend }) {
 
   if (!ready) return <div className="loading"><div className="spinner" /></div>
 
-  const today = bangkokToday()
   return (
     <div className="app">
-      <Brandbar counter={tab === 'home' ? [today.slice(8, 10), String(daysInMonth(monthOf(today)))] : undefined} />
+      <Brandbar />
       <main className="scroller" ref={scroller}>
         {tab === 'home' && <Home onOpenPlan={() => { setPlanMonth(monthOf(bangkokToday())); go('plan') }} />}
         {tab === 'daily' && <Daily />}

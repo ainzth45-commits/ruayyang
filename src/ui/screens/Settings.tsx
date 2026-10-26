@@ -8,6 +8,7 @@ import { isLocalMode } from '../../data'
 import { Money } from '../components/Money'
 import { ConfirmButton, Sheet } from '../components/Sheet'
 import { PageHeader } from '../components/PageHeader'
+import { MonthField } from '../components/Pickers'
 import { CATEGORY_ICONS, CategoryIcon } from '../icons'
 import { useAction, useApp, useLoad } from '../store'
 import { blurOnEnter, moneyInputProps, textInputProps } from '../inputs'
@@ -204,7 +205,7 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
       <label className="field"><span>ชื่อรายการ</span><input className="input" {...textInputProps} onKeyDown={blurOnEnter} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></label>
       <label className="field">
         <span>ยอดตั้งต้นต่อเดือน (บาท)</span>
-        <input className={`input num ${p.ok ? '' : 'err'}`} {...moneyInputProps} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+        <input className={`input num ${p.ok || amount === '' ? '' : 'err'}`} {...moneyInputProps} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
       </label>
       {amountChanged && (
         <div className="switch">
@@ -217,8 +218,8 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
         <button className="toggle" role="switch" aria-checked={estimate} onClick={() => setEstimate(!estimate)} />
       </div>
       <div className="two">
-        <label className="field"><span>เดือนเริ่ม</span><input className="input" type="month" value={start} onChange={(e) => setStart(e.target.value)} /></label>
-        <label className="field"><span>เดือนสุดท้าย (ว่าง = ไม่มีกำหนด)</span><input className={`input ${monthOk ? '' : 'err'}`} type="month" value={end} onChange={(e) => setEnd(e.target.value)} /></label>
+        <MonthField label="เดือนเริ่ม" value={start} onChange={(m) => m && setStart(m)} />
+        <MonthField label="เดือนสุดท้าย" value={end} onChange={setEnd} emptyLabel="ไม่มีกำหนด" min={start} invalid={!monthOk} />
       </div>
       <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>เดือนที่เปิดดูไปแล้วจะไม่เปลี่ยนตาม — แก้ในหน้าแผนเดือนได้</p>
       <button className="btn primary" disabled={!clean || !p.ok || !monthOk || busy} onClick={save}>บันทึก</button>

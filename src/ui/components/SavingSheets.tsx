@@ -7,6 +7,7 @@ import type { DateKey, Satang, Saving } from '../../domain/types'
 import { blurOnEnter, moneyInputProps, textInputProps } from '../inputs'
 import { useAction, useApp, useLoad } from '../store'
 import { Money } from './Money'
+import { DateField } from './Pickers'
 import { ConfirmButton, Sheet } from './Sheet'
 import { SwipeRow } from './SwipeRow'
 
@@ -60,10 +61,7 @@ export function SavingForm(props: {
       {touched && !parsed.ok && <div className="err-text" style={{ marginTop: -10, marginBottom: 12 }}>{parsed.error}</div>}
       <p className="muted" style={{ fontSize: 12.5, margin: '-6px 4px 14px' }}>เงินเก็บไม่นับเป็นรายจ่าย งบใช้จ่ายจะไม่ลดลง</p>
       <div className="two">
-        <label className="field">
-          <span>วันที่</span>
-          <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-        </label>
+        <DateField label="วันที่" value={date} onChange={setDate} />
         <label className="field">
           <span>โน้ต (ไม่บังคับ)</span>
           <input className="input" {...textInputProps} onKeyDown={blurOnEnter} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="เช่น โอนเข้าออมทรัพย์" />
