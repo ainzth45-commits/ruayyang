@@ -35,15 +35,14 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
   }, [today])
   const [kind, setKind] = useState<'expense' | 'saving'>('expense')
   const [mode, setMode] = useState<'manual' | 'slip'>('manual')
-  const [queue, setQueue] = useState<File[]>([])
-  const [idx, setIdx] = useState(0)
+  const [picked, setPicked] = useState<File | null>(null)
   const [slip, setSlip] = useState<SlipState | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // อ่านสลิปใบปัจจุบัน: hash → เช็กซ้ำ → OCR
+  // อ่านสลิป: hash → เช็กซ้ำ → OCR (ยอด + วันที่)
   useEffect(() => {
-    if (mode !== 'slip' || !queue[idx]) return
-    const file = queue[idx]
+    if (mode !== 'slip' || !picked) return
+    const file = picked
     const url = URL.createObjectURL(file)
     let alive = true
     setSlip({ file, url, hash: null, dup: null, scanning: true, progress: 0, ocrAmount: null, ocrDate: null })
@@ -71,12 +70,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
       alive = false
       URL.revokeObjectURL(url)
     }
-  }, [mode, queue, idx, repo, toast])
-
-  const next = () => {
-    if (idx + 1 < queue.length) setIdx(idx + 1)
-    else onClose()
-  }
+  }, [mode, picked, repo, toast])
 
   const saveManual = (v: TxValues) =>
     run(async () => {
@@ -95,7 +89,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
         await repo.deleteSlip(path).catch(() => {}) // ไม่ทิ้งรูปกำพร้าไว้ใน storage
         throw e
       }
-      next()
+      onClose()
     }, `บันทึก ${formatBaht(v.amount)} บาทแล้ว`, 'coin')
 
   const recent = base.data?.recent ?? []
@@ -141,15 +135,12 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
       ref={fileRef}
       type="file"
       accept="image/*"
-      multiple
       hidden
       onChange={(e) => {
         const files = [...(e.target.files ?? [])].filter((f) => f.type.startsWith('image/') || f.name.match(/\.(heic|jpe?g|png|webp)$/i))
         e.target.value = '' // เลือกไฟล์เดิมซ้ำได้
         if (!files.length) return
-        setQueue(files.slice(0, 20))
-        if (files.length > 20) toast('ทีละไม่เกิน 20 ใบนะ')
-        setIdx(0)
+        setPicked(files[0]) // ทีละใบ — ลงทีละรายการอยู่แล้ว
         setMode('slip')
       }}
     />
@@ -212,13 +203,13 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
         : 'สลิปนี้เป็นค่าอะไร'
       : 'กำลังอ่านสลิป'
   return (
-    <Sheet title={<>{title}{queue.length > 1 && <span className="muted" style={{ fontSize: 13, marginLeft: 6 }}>{idx + 1}/{queue.length}</span>}</>} onClose={onClose}>
+    <Sheet title={title} onClose={onClose}>
       {slip && <img className="slip-thumb" src={slip.url} alt="สลิป" />}
       {slip?.dup && (
         <div className="warn">
           สลิปนี้บันทึกไปแล้วเมื่อ {dateLabel(slip.dup.date)} ยอด {formatBaht(slip.dup.amount)} บาท
-          <button className="btn ghost" style={{ marginTop: 10, height: 42 }} onClick={next}>
-            ข้ามใบนี้
+          <button className="btn ghost" style={{ marginTop: 10, height: 42 }} onClick={onClose}>
+            ปิด
           </button>
         </div>
       )}
@@ -230,21 +221,14 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
       )}
       {slip && !slip.scanning && !slip.dup && categories.length > 0 && (
         <TxForm
-          key={`${idx}-${slip.ocrAmount}-${slip.ocrDate}`}
+          key={`${slip.ocrAmount}-${slip.ocrDate}`}
           categories={categories}
           initial={{ amount: slip.ocrAmount, date: slip.ocrDate ?? today, categoryId: null, note: null }}
           dateLabel={slip.ocrDate ? 'วันที่ (อ่านจากสลิป)' : 'วันที่'}
           busy={busy}
-          submitLabel={idx + 1 < queue.length ? 'บันทึก แล้วไปใบถัดไป' : 'บันทึก'}
+          submitLabel="บันทึก"
           autoFocusAmount={slip.ocrAmount === null}
           onSubmit={saveSlip}
-          footer={
-            queue.length > 1 && (
-              <button type="button" className="btn ghost" onClick={next}>
-                ข้ามใบนี้
-              </button>
-            )
-          }
         />
       )}
     </Sheet>

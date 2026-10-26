@@ -470,8 +470,11 @@ button.savings-card:active { transform: scale(.99); }
 
 /* ปุ่มหลักในแผ่นตรึงอยู่ล่างเสมอ ไม่ต้องเลื่อนหา · วงขาวรอบปุ่มบังเนื้อหาที่เลื่อนผ่านข้างหลัง */
 .sheet .btn.primary, .sheet .step-nav { position: sticky; bottom: calc(var(--safe-b) + 10px); z-index: 4; }
-.sheet .btn.primary { box-shadow: var(--glow), 0 0 0 12px #fff, 0 48px 0 12px #fff, 0 -14px 24px 6px rgba(255, 255, 255, .9); }
-.sheet .step-nav { background: #fff; box-shadow: 0 0 0 12px #fff, 0 48px 0 12px #fff, 0 -14px 24px 6px rgba(255, 255, 255, .9); }
+.sheet .btn.primary { margin-top: 18px; box-shadow: var(--glow), 0 0 0 10px #fff, 0 48px 0 10px #fff; }
+.sheet .step-nav { background: #fff; box-shadow: 0 0 0 10px #fff, 0 48px 0 10px #fff; }
+/* เลื่อนอัตโนมัติ (เปิดปฏิทิน/focus ช่องกรอก) ต้องเผื่อที่ให้ปุ่มที่ตรึงอยู่ล่าง ไม่งั้นปุ่มบังของที่เพิ่งเลื่อนมาให้เห็น */
+.sheet { scroll-padding-bottom: calc(96px + var(--safe-b)); scroll-padding-top: 96px; }
+html.kb-open .sheet { scroll-padding-bottom: 96px; }
 /* ปุ่มที่ตรึงห้ามโปร่ง (opacity ทำให้เนื้อหาข้างหลังโผล่ทะลุ) → ใช้สีอ่อนทึบแทน */
 .sheet .btn.primary:disabled { opacity: 1; background: linear-gradient(135deg, #f1e9d8, #e9dcc0); color: rgba(29, 20, 6, .42); }
 .sheet .btn.primary:disabled::after { display: none; }
