@@ -36,6 +36,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
   const [kind, setKind] = useState<'expense' | 'saving'>('expense')
   const [mode, setMode] = useState<'manual' | 'slip'>('manual')
   const [picked, setPicked] = useState<File | null>(null)
+  const [zoom, setZoom] = useState(false)
   const [slip, setSlip] = useState<SlipState | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -204,7 +205,16 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
       : 'กำลังอ่านสลิป'
   return (
     <Sheet title={title} onClose={onClose}>
-      {slip && <img className="slip-thumb" src={slip.url} alt="สลิป" />}
+      {slip && (
+        // รูปเล็กข้างตัวหนังสือ: ให้ทั้งฟอร์ม (ยอด/หมวด/วันที่) พอดีจอโดยไม่ต้องเลื่อน · แตะเพื่อดูเต็ม
+        <button type="button" className={`slip-strip ${zoom ? 'zoom' : ''}`} onClick={() => setZoom(!zoom)} aria-label={zoom ? 'ย่อรูปสลิป' : 'ดูรูปสลิปเต็ม'}>
+          <img src={slip.url} alt="สลิป" />
+          <span>
+            <b>{slip.scanning ? 'กำลังอ่านสลิป…' : slip.ocrDate ? `สลิปวันที่ ${dateLabel(slip.ocrDate)}` : 'สลิปที่แนบ'}</b>
+            <small>{zoom ? 'แตะเพื่อย่อ' : 'แตะเพื่อดูรูปเต็ม'}</small>
+          </span>
+        </button>
+      )}
       {slip?.dup && (
         <div className="warn">
           สลิปนี้บันทึกไปแล้วเมื่อ {dateLabel(slip.dup.date)} ยอด {formatBaht(slip.dup.amount)} บาท
