@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1080, initial-scale=1" />
+<title>รวยยัง? · tutorial stage</title>
+<!-- dev เท่านั้น: เวทีอัดคลิปสอนใช้ (1080×1920) — แอปจริงใน iframe + ป้ายขั้นตอน + วงแตะ · ไม่อยู่ใน production build -->
+<script type="module">
+  import '@fontsource/ibm-plex-sans-thai/600.css'
+  import '@fontsource/ibm-plex-sans-thai/700.css'
+  import '@fontsource/anuphan/400.css'
+  import '@fontsource/anuphan/500.css'
+  import '@fontsource/chakra-petch/500.css'
+  import '@fontsource/chakra-petch/600.css'
+  import logo from '/src/ui/assets/logo-login.webp'
+  document.querySelectorAll('img.logo').forEach((i) => (i.src = logo))
+</script>
+<style>
+  html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; }
+  body {
+    font-family: 'Anuphan', sans-serif; color: #1c1c1e; position: relative;
+    background: radial-gradient(110% 60% at 50% 0%, #fbf7ee 0%, #f4f2ec 55%, #e9e6df 100%);
+  }
+  body::before { content: ''; position: absolute; inset: 0; background: radial-gradient(60% 40% at 50% 62%, rgba(227,198,138,.28), transparent 70%); }
+
+  /* ป้ายขั้นตอนด้านบน */
+  .cap { position: absolute; left: 0; right: 0; top: 70px; text-align: center; transition: opacity .45s, transform .45s cubic-bezier(.2,.7,.2,1); }
+  .cap.out { opacity: 0; transform: translateY(-18px); }
+  .step { font-family: 'Chakra Petch'; font-weight: 600; font-size: 26px; letter-spacing: .42em; color: #a8803a; }
+  .step b { display: inline-grid; place-items: center; width: 54px; height: 54px; border-radius: 18px; margin-left: 4px; letter-spacing: 0; color: #1d1406; background: linear-gradient(135deg,#ecd29b,#d2ad66 45%,#b88d44); box-shadow: 0 10px 24px -10px rgba(168,128,58,.7); vertical-align: middle; font-size: 26px; }
+  .title { font-family: 'IBM Plex Sans Thai'; font-weight: 700; font-size: 58px; line-height: 1.3; margin-top: 18px; color: #111; }
+  .title em { font-style: normal; background: linear-gradient(100deg,#c79b4c,#a8803a 50%,#8c6a2e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* อุปกรณ์ */
+  .device-wrap { position: absolute; left: 50%; top: 300px; transform: translateX(-50%) scale(1.52); transform-origin: top center; }
+  .device { position: relative; width: 430px; height: 932px; padding: 14px; border-radius: 68px; background: linear-gradient(145deg,#3a3a3c,#1c1c1e 40%,#2c2c2e); box-shadow: 0 0 0 2px #5a5a5e, 0 50px 90px -40px rgba(40,30,10,.55); box-sizing: content-box; }
+  .screen { position: relative; width: 430px; height: 932px; border-radius: 55px; overflow: hidden; background: #fff; }
+  .status { position: absolute; inset: 0 0 auto; height: 54px; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 6px 34px 0 46px; font: 600 17px -apple-system, system-ui, sans-serif; background: #fff; }
+  .island { position: absolute; top: 11px; left: 50%; transform: translateX(-50%); width: 126px; height: 37px; border-radius: 20px; background: #000; z-index: 3; }
+  iframe { position: absolute; top: 54px; left: 0; width: 430px; height: 878px; border: 0; }
+  .home { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 140px; height: 5px; border-radius: 3px; background: #111; z-index: 2; }
+
+  /* คำอธิบายด้านล่าง */
+  .hint { position: absolute; left: 70px; right: 70px; bottom: 54px; text-align: center; font-size: 34px; color: #6b6b73; transition: opacity .4s; }
+  .hint.out { opacity: 0; }
+
+  /* การ์ดเปิด/ปิด */
+  .card { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(110% 70% at 50% 30%, #ffffff 0%, #fbf7ee 60%, #f1ede4 100%); transition: opacity .6s; }
+  .card.out { opacity: 0; pointer-events: none; }
+  .card img { width: 620px; height: 620px; animation: float 4s ease-in-out infinite; mix-blend-mode: multiply; }
+  .card .t { font-family: 'IBM Plex Sans Thai'; font-weight: 700; font-size: 76px; margin-top: 10px; }
+  .card .s { font-size: 36px; color: #6b6b73; margin-top: 14px; }
+  .card .e { font-family: 'Chakra Petch'; font-weight: 600; font-size: 26px; letter-spacing: .42em; color: #a8803a; margin-top: 40px; }
+  @keyframes float { 50% { transform: translateY(-14px); } }
+</style>
+</head>
+<body>
+  <div class="cap out" id="cap"><div class="step" id="step"></div><div class="title" id="title"></div></div>
+
+  <div class="device-wrap">
+    <div class="device"><div class="screen">
+      <div class="island"></div>
+      <div class="status"><span>9:41</span><span>●●● ◔ ▭</span></div>
+      <iframe id="app" src="./?demo=1" title="app"></iframe>
+      <div class="home"></div>
+    </div></div>
+  </div>
+
+  <div class="hint out" id="hint"></div>
+
+  <div class="card" id="intro">
+    <img class="logo" alt="" />
+    <div class="e">How to use</div>
+    <div class="s">วิธีใช้ใน 1 นาที · บันทึกรายรับรายจ่ายส่วนตัว</div>
+  </div>
+  <div class="card out" id="outro">
+    <img class="logo" alt="" />
+    <div class="s">เงินของเรา ชัดทุกบาท</div>
+    <div class="e">Add to Home Screen</div>
+  </div>
+
+<script>
+  // ตัวควบคุมสำหรับสคริปต์อัด (Playwright เรียกผ่าน window.T)
+  const $ = (id) => document.getElementById(id)
+  window.T = {
+    caption(step, title, hint) {
+      const cap = $('cap')
+      cap.classList.add('out')
+      setTimeout(() => {
+        $('step').innerHTML = step ? `STEP <b>${step}</b>` : ''
+        $('title').innerHTML = title
+        cap.classList.remove('out')
+      }, 260)
+      T.hint(hint)
+    },
+    hint(text) {
+      const h = $('hint')
+      h.classList.add('out')
+      setTimeout(() => { h.textContent = text || ''; if (text) h.classList.remove('out') }, 220)
+    },
+    card(id, show) { $(id).classList.toggle('out', !show) },
+  }
+  // วงแตะในแอป + บันทึกเวลาเล่นเสียง
+  $('app').addEventListener('load', () => {
+    const w = $('app').contentWindow
+    w.__soundLog = window.__soundLog = window.__soundLog || []
+    const d = w.document
+    const st = d.createElement('style')
+    st.textContent = `.tap-fx{position:fixed;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;pointer-events:none;z-index:9999;
+      background:radial-gradient(circle,rgba(210,173,102,.55),rgba(210,173,102,.15) 60%,transparent 70%);border:2px solid rgba(168,128,58,.8);
+      animation:tapfx .55s ease-out forwards}@keyframes tapfx{from{transform:scale(.4);opacity:1}to{transform:scale(1.5);opacity:0}}`
+    d.head.appendChild(st)
+    d.addEventListener('pointerdown', (e) => {
+      const fx = d.createElement('div')
+      fx.className = 'tap-fx'
+      fx.style.left = e.clientX + 'px'
+      fx.style.top = e.clientY + 'px'
+      d.body.appendChild(fx)
+      setTimeout(() => fx.remove(), 600)
+    }, true)
+  })
+</script>
+</body>
+</html>

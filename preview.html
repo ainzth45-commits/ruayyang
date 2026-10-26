@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>รวยยัง? · iPhone 14 Pro Max preview</title>
+<!-- dev เท่านั้น: กรอบ iPhone 14 Pro Max (430×932 pt) ครอบแอปจริงใน iframe — ไม่อยู่ใน production build -->
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: grid; place-items: center; overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 0%, #fbf7ee 0%, #f1efe9 55%, #e6e3dc 100%);
+    font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  }
+  /* fixed + translate: กึ่งกลางจอเสมอ แม้กรอบใหญ่กว่าหน้าจอ (grid จะชิดบนเมื่อล้น) */
+  .stage { position: fixed; left: 50%; top: 50%; transform-origin: center; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .device {
+    position: relative; width: 430px; height: 932px; padding: 14px; border-radius: 68px;
+    background: linear-gradient(145deg, #3a3a3c, #1c1c1e 40%, #2c2c2e);
+    box-shadow: 0 0 0 2px #5a5a5e, 0 60px 120px -40px rgba(40, 30, 10, .45), 0 30px 60px -30px rgba(0, 0, 0, .5);
+    box-sizing: content-box;
+  }
+  .device::before, .device::after { /* ปุ่มข้างเครื่อง */
+    content: ''; position: absolute; width: 4px; border-radius: 2px; background: #2c2c2e;
+  }
+  .device::before { left: -4px; top: 190px; height: 64px; box-shadow: 0 86px 0 #2c2c2e; }
+  .device::after { right: -4px; top: 250px; height: 100px; }
+  .screen { position: relative; width: 430px; height: 932px; border-radius: 55px; overflow: hidden; background: #fff; }
+  .status {
+    position: absolute; inset: 0 0 auto; height: 54px; z-index: 2; display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 34px 0 46px; font-weight: 600; font-size: 17px; color: #000; background: #fff;
+  }
+  .status .icons { display: flex; gap: 6px; align-items: center; }
+  .island { position: absolute; top: 11px; left: 50%; transform: translateX(-50%); width: 126px; height: 37px; border-radius: 20px; background: #000; z-index: 3; }
+  iframe { position: absolute; top: 54px; left: 0; width: 430px; height: calc(932px - 54px); border: 0; }
+  .home { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 140px; height: 5px; border-radius: 3px; background: #111; z-index: 2; pointer-events: none; }
+  .caption { font-size: 12px; letter-spacing: .3em; color: #8c6a2e; text-transform: uppercase; }
+  .caption a { color: inherit; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="device">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="status">
+          <span id="clock">9:41</span>
+          <span class="icons">
+            <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+            <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 2.5c2.3 0 4.4.9 6 2.4l1.2-1.3C13.3 1.7 10.8.7 8 .7S2.7 1.7.8 3.6L2 4.9c1.6-1.5 3.7-2.4 6-2.4zm0 3.6c1.3 0 2.5.5 3.4 1.3l1.2-1.3C11.4 5 9.8 4.3 8 4.3S4.6 5 3.4 6.1l1.2 1.3c.9-.8 2.1-1.3 3.4-1.3zm0 3.5c-.6 0-1.1.2-1.5.6L8 11.8l1.5-1.6c-.4-.4-.9-.6-1.5-.6z"/></svg>
+            <svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="#000" opacity=".4"/><rect x="2" y="2" width="20" height="9" rx="2"/><path d="M25 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2z" opacity=".5"/></svg>
+          </span>
+        </div>
+        <iframe src="./?demo=1" title="รวยยัง? app"></iframe>
+        <div class="home"></div>
+      </div>
+    </div>
+    <div class="caption">iPhone 14 Pro Max · 430 × 932 · <a href="./" target="_blank">เปิดเต็มจอ</a></div>
+  </div>
+  <script>
+    const stage = document.getElementById('stage')
+    const fit = () => {
+      const s = Math.min(1, (innerHeight - 32) / stage.offsetHeight, (innerWidth - 32) / stage.offsetWidth)
+      stage.style.transform = `translate(-50%, -50%) scale(${s})`
+    }
+    addEventListener('resize', fit); fit()
+    const clock = document.getElementById('clock')
+    const tick = () => { const d = new Date(); clock.textContent = d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0') }
+    tick(); setInterval(tick, 15000)
+  </script>
+</body>
+</html>

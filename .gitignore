@@ -1,0 +1,27 @@
+# ข้อมูลการเงินส่วนตัว — ห้าม commit (repo เป็น public)
+*.xlsx
+*.xls
+*.csv
+private/
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+test-results/
+*.traineddata
+*.tsbuildinfo
+output/
+โลโก้ที่ใช้/
+
+# เครื่องมือ/เอกสารส่วนตัวตอนพัฒนา (มีตัวเลขจริงจากชีต/โฟลว์ส่วนตัว) — เก็บไว้ในเครื่องเท่านั้น
+docs/
+TASK.md
+scripts/clip/
+scripts/e2e/
+scripts/import_xlsx.py
+scripts/ocr-verify.mjs
