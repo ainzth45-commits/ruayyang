@@ -3,7 +3,7 @@ import { CalendarCheck, Plus, TableProperties } from 'lucide-react'
 import { entryStatus, summarizeMonth } from '../../domain/calc'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
 import { addMonths, bangkokToday, monthEndDate, monthLabel, monthOf, monthStartDate } from '../../domain/month'
-import { ensureMonths } from '../../domain/plan'
+import { addItemToExistingMonths, ensureMonths } from '../../domain/plan'
 import { isMonthClosed } from '../../domain/savings'
 import type { ItemKind, MonthEntry, MonthKey, RecurringItem } from '../../domain/types'
 import { Money } from '../components/Money'
@@ -222,6 +222,7 @@ function AddEntrySheet(props: { month: MonthKey; items: RecurringItem[]; existin
         startMonth: props.month, endMonth: repeat ? null : props.month, sort: props.items.length, archived: false,
       })
       await repo.insertEntriesIfAbsent([{ itemId: it.id, month: props.month, amount: p.value, paid: false, note: null }])
+      if (repeat) await addItemToExistingMonths(repo, it) // ทำซ้ำ → ลงเดือนถัดไปที่เปิดไว้แล้วด้วย
       props.onClose()
     }, `เพิ่ม ${cleanName} แล้ว`, 'save')
 

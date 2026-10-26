@@ -24,6 +24,20 @@ export async function ensureMonths(repo: Repo, from: MonthKey, to: MonthKey): Pr
   await repo.insertMonthsIfAbsent(missing)
 }
 
+/**
+ * รายการประจำที่เพิ่มใหม่ → ใส่ยอดลงเดือนที่เปิดไว้แล้วทุกเดือนในช่วง [เดือนเริ่ม, เดือนสุดท้าย]
+ * (ensureMonths เติมให้เฉพาะเดือนที่ยังไม่เคยเปิด) คืนจำนวนเดือนที่เพิ่ม
+ */
+export async function addItemToExistingMonths(repo: Repo, item: RecurringItem): Promise<number> {
+  const months = await repo.listMonths(item.startMonth, item.endMonth ?? '9999-12')
+  const have = new Set((await repo.listEntries(item.startMonth, item.endMonth ?? '9999-12')).filter((e) => e.itemId === item.id).map((e) => e.month))
+  const entries: NewEntry[] = months
+    .filter((m) => !have.has(m.month) && isActiveIn(item, m.month))
+    .map((m) => ({ itemId: item.id, month: m.month, amount: item.defaultAmount, paid: false, note: null }))
+  if (entries.length) await repo.insertEntriesIfAbsent(entries)
+  return entries.length
+}
+
 /** เปลี่ยนยอดตั้งต้น + อัปเดตเดือนที่ยังไม่จ่ายตั้งแต่ fromMonth คืนจำนวนเดือนที่อัปเดต */
 export async function applyDefaultToFuture(repo: Repo, item: RecurringItem, amount: Satang, fromMonth: MonthKey): Promise<number> {
   await repo.saveItem({ ...item, defaultAmount: amount })

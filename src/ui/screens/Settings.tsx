@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Download, LogOut, PiggyBank, Plus, RotateCcw } from 'lucide-react'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
 import { bangkokToday, monthLabel, monthOf } from '../../domain/month'
-import { applyDefaultToFuture, stopItem } from '../../domain/plan'
+import { addItemToExistingMonths, applyDefaultToFuture, stopItem } from '../../domain/plan'
 import type { Category, ItemKind, RecurringItem } from '../../domain/types'
 import { isLocalMode } from '../../data'
 import { Money } from '../components/Money'
@@ -191,7 +191,8 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
       if (item && amountChanged && applyFuture) {
         await applyDefaultToFuture(repo, { ...item, ...base }, p.value, thisMonth)
       } else {
-        await repo.saveItem({ id: item?.id, ...base, defaultAmount: p.value })
+        const saved = await repo.saveItem({ id: item?.id, ...base, defaultAmount: p.value })
+        if (!item) await addItemToExistingMonths(repo, saved) // รายการใหม่ → ลงเดือนที่เปิดไว้แล้วด้วย
       }
       onClose()
     }, 'บันทึกแล้ว', 'save')
@@ -221,7 +222,7 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
         <MonthField label="เดือนเริ่ม" value={start} onChange={(m) => m && setStart(m)} />
         <MonthField label="เดือนสุดท้าย" value={end} onChange={setEnd} emptyLabel="ไม่มีกำหนด" min={start} invalid={!monthOk} />
       </div>
-      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>เดือนที่เปิดดูไปแล้วจะไม่เปลี่ยนตาม — แก้ในหน้าแผนเดือนได้</p>
+      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>{item ? 'แก้ยอด/ช่วงเดือนแล้ว เดือนที่มีอยู่ไม่เปลี่ยนตาม — แก้รายเดือนได้ในหน้าแผนเดือน' : 'รายการใหม่จะลงทุกเดือนตั้งแต่เดือนเริ่ม (รวมเดือนที่มีอยู่แล้ว)'}</p>
       <button className="btn primary" disabled={!clean || !p.ok || !monthOk || busy} onClick={save}>บันทึก</button>
       {item && (
         <div style={{ marginTop: 10 }}>

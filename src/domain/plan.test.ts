@@ -128,3 +128,18 @@ describe('ensureDefaultCategories concurrency', () => {
     expect(await repo.listCategories()).toHaveLength(DEFAULT_CATEGORIES.length)
   })
 })
+
+describe('addItemToExistingMonths', () => {
+  it('fills months already opened within start..end, skips others and existing entries', async () => {
+    const { LocalRepo, memoryKV, memorySlipStore } = await import('../data/localRepo')
+    const { addItemToExistingMonths } = await import('./plan')
+    const repo = new LocalRepo(memoryKV(), memorySlipStore())
+    await repo.insertMonthsIfAbsent(['2026-08', '2026-09', '2026-10', '2026-11', '2027-03'])
+    const salary = await repo.saveItem({ name: 'รายรับ', kind: 'income', defaultAmount: 2_000_000, isEstimate: false, startMonth: '2026-09', endMonth: '2026-12', sort: 0, archived: false })
+    await repo.insertEntriesIfAbsent([{ itemId: salary.id, month: '2026-10', amount: 1, paid: true, note: null }])
+    expect(await addItemToExistingMonths(repo, salary)).toBe(2)
+    const e = await repo.listEntries('2000-01', '9999-12')
+    expect(e.map((x) => `${x.month}:${x.amount}`).sort()).toEqual(['2026-09:2000000', '2026-10:1', '2026-11:2000000'])
+    expect(await addItemToExistingMonths(repo, salary)).toBe(0) // เรียกซ้ำไม่เพิ่ม
+  })
+})
