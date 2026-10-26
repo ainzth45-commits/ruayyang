@@ -3,7 +3,7 @@ import { CalendarCheck, Plus, TableProperties } from 'lucide-react'
 import { entryStatus, summarizeMonth } from '../../domain/calc'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
 import { addMonths, bangkokToday, monthEndDate, monthLabel, monthOf, monthStartDate } from '../../domain/month'
-import { addItemToExistingMonths, ensureMonths } from '../../domain/plan'
+import { addItemToExistingMonths, applyDefaultToFuture, ensureMonths } from '../../domain/plan'
 import { isMonthClosed } from '../../domain/savings'
 import type { ItemKind, MonthEntry, MonthKey, RecurringItem } from '../../domain/types'
 import { Money } from '../components/Money'
@@ -143,6 +143,8 @@ function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: Recurri
   const [note, setNote] = useState(entry.note ?? '')
   const p = parseMoneyInput(amount, { allowZero: true })
   const isIncome = item?.kind === 'income'
+  const changed = p.ok && p.value !== entry.amount
+  const [carry, setCarry] = useState(false)
   return (
     <Sheet title={item?.name ?? 'รายการ'} onClose={onClose}>
       <div className="muted" style={{ marginTop: -10, marginBottom: 14, fontSize: 13.5 }}>
@@ -160,6 +162,12 @@ function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: Recurri
         <span>{isIncome ? 'ได้รับแล้ว' : 'จ่ายแล้ว'}{item?.isEstimate && !isIncome && <span className="muted" style={{ fontSize: 12 }}> — แก้เป็นยอดจริงก่อนติ๊ก</span>}</span>
         <button className="toggle" role="switch" aria-checked={paid} aria-label="จ่ายแล้ว" onClick={() => setPaid(!paid)} />
       </div>
+      {changed && item && (
+        <div className="switch">
+          <span>ใช้ยอดนี้กับเดือนถัดไปด้วย<br /><span className="muted" style={{ fontSize: 12 }}>{carry ? `ทุกเดือนหลัง ${monthLabel(entry.month)} ที่ยังไม่จ่าย` : 'ปิด = เปลี่ยนแค่เดือนนี้'}</span></span>
+          <button className="toggle" role="switch" aria-checked={carry} aria-label="ใช้ยอดนี้กับเดือนถัดไปด้วย" onClick={() => setCarry(!carry)} />
+        </div>
+      )}
       <label className="field" style={{ marginTop: 14 }}>
         <span>โน้ต</span>
         <input className="input" {...textInputProps} onKeyDown={blurOnEnter} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
@@ -171,6 +179,7 @@ function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: Recurri
           p.ok &&
           run(async () => {
             await repo.updateEntry(entry.id, { amount: p.value, paid, note: sanitizeText(note) || null })
+            if (changed && carry && item) await applyDefaultToFuture(repo, item, p.value, addMonths(entry.month, 1))
             onClose()
           }, paid && !entry.paid ? (isIncome ? 'รับเงินแล้ว' : 'จ่ายแล้ว') : 'บันทึกแล้ว', paid && !entry.paid ? 'kaching' : 'save')
         }

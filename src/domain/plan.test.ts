@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { LocalRepo, memoryKV, memorySlipStore } from '../data/localRepo'
-import { applyDefaultToFuture, DEFAULT_CATEGORIES, ensureDefaultCategories, ensureMonths, importSeed, stopItem, type Seed } from './plan'
+import { applyDefaultToFuture, DEFAULT_CATEGORIES, ensureDefaultCategories, ensureMonths, importSeed, removeItem, stopItem, type Seed } from './plan'
 import type { RecurringItem } from './types'
 
 let repo: LocalRepo
@@ -141,5 +141,34 @@ describe('addItemToExistingMonths', () => {
     const e = await repo.listEntries('2000-01', '9999-12')
     expect(e.map((x) => `${x.month}:${x.amount}`).sort()).toEqual(['2026-09:2000000', '2026-10:1', '2026-11:2000000'])
     expect(await addItemToExistingMonths(repo, salary)).toBe(0) // เรียกซ้ำไม่เพิ่ม
+  })
+})
+
+describe('stopItem / removeItem (บั๊กจริง 2026-10-26: กดเลิกรายการที่จบไปแล้ว → เดือนสุดท้ายถูกยืดออก)', () => {
+  it('stopping an item that already ended never extends its end month', async () => {
+    const item = await repo.saveItem({ ...base, startMonth: '2026-02', endMonth: '2026-03' })
+    await stopItem(repo, item, '2026-10')
+    expect((await repo.listItems())[0].endMonth).toBe('2026-03')
+  })
+
+  it('removeItem hides the item, drops unpaid entries from fromMonth, keeps paid history and earlier months', async () => {
+    const item = await repo.saveItem({ ...base, startMonth: '2026-08', endMonth: null })
+    await ensureMonths(repo, '2026-08', '2026-12')
+    const aug = (await repo.listEntries('2026-08', '2026-08'))[0]
+    await repo.updateEntry(aug.id, { paid: true })
+    await removeItem(repo, item, '2026-10')
+    const [saved] = await repo.listItems()
+    expect(saved).toMatchObject({ archived: true, endMonth: '2026-09' })
+    expect((await repo.listEntries('2026-01', '2027-12')).map((e) => e.month).sort()).toEqual(['2026-08', '2026-09'])
+    await ensureMonths(repo, '2027-01', '2027-01')
+    expect(await repo.listEntries('2027-01', '2027-01')).toEqual([]) // ไม่โผล่กลับมาในเดือนใหม่
+  })
+
+  it('removeItem on an item that has not started yet removes it from every month', async () => {
+    const item = await repo.saveItem({ ...base, startMonth: '2026-11', endMonth: null })
+    await ensureMonths(repo, '2026-10', '2026-12')
+    await removeItem(repo, item, '2026-10')
+    expect(await repo.listEntries('2026-01', '2027-12')).toEqual([])
+    expect((await repo.listItems())[0].archived).toBe(true)
   })
 })

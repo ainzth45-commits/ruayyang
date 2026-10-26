@@ -372,6 +372,13 @@ button.savings-card:active { transform: scale(.99); }
 .check-btn:active { background: var(--holo); color: #fff; }
 .check-btn:disabled { opacity: .4; }
 
+/* รายการประจำที่จบแล้ว (พับเก็บ) */
+.fold-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 12px; padding: 8px; font-size: 13px; color: var(--muted); }
+.fold-btn svg { transition: transform .2s; color: var(--gold); }
+.fold-btn[aria-expanded='true'] svg { transform: rotate(180deg); }
+.list.ended { opacity: .72; margin-top: 6px; }
+.item-actions { display: grid; gap: 10px; margin-top: 10px; }
+
 /* ---------- ปฏิทินของแอป (วันที่ / เดือน) ---------- */
 .picker-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; cursor: pointer; }
 .picker-btn .picker-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
@@ -451,3 +458,4 @@ button.savings-card:active { transform: scale(.99); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.item-actions .btn + .btn { margin-top: 0; }

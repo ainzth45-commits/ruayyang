@@ -47,12 +47,22 @@ export async function applyDefaultToFuture(repo: Repo, item: RecurringItem, amou
   return targets.length
 }
 
-/** เลิกรายการประจำตั้งแต่ fromMonth: ลบเดือนที่ยังไม่จ่าย เก็บที่จ่ายแล้วไว้เป็นประวัติ */
-export async function stopItem(repo: Repo, item: RecurringItem, fromMonth: MonthKey): Promise<void> {
-  await repo.saveItem({ ...item, endMonth: addMonths(fromMonth, -1) })
+/**
+ * เลิกรายการประจำตั้งแต่ fromMonth: ลบเดือนที่ยังไม่จ่าย เก็บที่จ่ายแล้วไว้เป็นประวัติ
+ * เดือนสุดท้ายเลื่อนได้แค่ "เข้ามา" — รายการที่จบไปแล้วต้องไม่ถูกยืดออก
+ */
+export async function stopItem(repo: Repo, item: RecurringItem, fromMonth: MonthKey, patch: Partial<RecurringItem> = {}): Promise<void> {
+  const stopAt = addMonths(fromMonth, -1)
+  const endMonth = item.endMonth !== null && item.endMonth < stopAt ? item.endMonth : stopAt
+  await repo.saveItem({ ...item, ...patch, endMonth })
   const entries = await repo.listEntries(fromMonth, '9999-12')
   const ids = entries.filter((e) => e.itemId === item.id && !e.paid).map((e) => e.id)
   if (ids.length) await repo.deleteEntries(ids)
+}
+
+/** ลบรายการประจำ: เลิกตั้งแต่ fromMonth + ซ่อนจากหน้าตั้งค่า (เดือนที่ผ่านมา/จ่ายแล้วเก็บไว้เป็นประวัติ) */
+export function removeItem(repo: Repo, item: RecurringItem, fromMonth: MonthKey): Promise<void> {
+  return stopItem(repo, item, fromMonth, { archived: true })
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, 'id' | 'sort' | 'archived'>[] = [

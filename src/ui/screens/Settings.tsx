@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Download, LogOut, PiggyBank, Plus, RotateCcw } from 'lucide-react'
+import { ChevronDown, Download, LogOut, PiggyBank, Plus, RotateCcw } from 'lucide-react'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
 import { bangkokToday, monthLabel, monthOf } from '../../domain/month'
-import { addItemToExistingMonths, applyDefaultToFuture, stopItem } from '../../domain/plan'
+import { addItemToExistingMonths, applyDefaultToFuture, removeItem, stopItem } from '../../domain/plan'
 import type { Category, ItemKind, RecurringItem } from '../../domain/types'
 import { isLocalMode } from '../../data'
 import { Money } from '../components/Money'
@@ -41,8 +41,25 @@ export function Settings() {
     }
   }
 
-  const visibleItems = (items.data ?? []).filter((i) => !i.archived)
   const thisMonth = monthOf(bangkokToday())
+  const visibleItems = (items.data ?? []).filter((i) => !i.archived)
+  const isEnded = (i: RecurringItem) => i.endMonth !== null && i.endMonth < thisMonth
+  const activeItems = visibleItems.filter((i) => !isEnded(i))
+  const endedItems = visibleItems.filter(isEnded)
+  const [showEnded, setShowEnded] = useState(false)
+  const itemRow = (i: RecurringItem) => (
+    <button key={i.id} className="row" style={{ gridTemplateColumns: '1fr auto' }} onClick={() => setItem(i)}>
+      <span>
+        <div className="title">{i.name}</div>
+        <div className="meta-t">
+          {i.kind === 'income' ? 'รายรับ' : 'รายจ่าย'}
+          {i.isEstimate ? ' · ประมาณ' : ''}
+          {i.endMonth ? ` · ${isEnded(i) ? 'จบ' : 'ถึง'} ${monthLabel(i.endMonth)}` : ''}
+        </div>
+      </span>
+      <Money v={i.defaultAmount} className="amt" />
+    </button>
+  )
 
   return (
     <div className="page">
@@ -65,23 +82,16 @@ export function Settings() {
       <div className="section">
         <div className="section-head"><h2>รายการประจำ</h2><span className="aside" style={{ fontSize: 12 }}>ใช้สร้างเดือนใหม่</span></div>
         <div className="list">
-          {visibleItems.map((i) => {
-            const ended = i.endMonth !== null && i.endMonth < thisMonth
-            return (
-              <button key={i.id} className="row" style={{ gridTemplateColumns: '1fr auto', opacity: ended ? 0.45 : 1 }} onClick={() => setItem(i)}>
-                <span>
-                  <div className="title">{i.name}</div>
-                  <div className="meta-t">
-                    {i.kind === 'income' ? 'รายรับ' : 'รายจ่าย'}
-                    {i.isEstimate ? ' · ประมาณ' : ''}
-                    {i.endMonth ? ` · ถึง ${monthLabel(i.endMonth)}` : ''}
-                  </div>
-                </span>
-                <Money v={i.defaultAmount} className="amt" />
-              </button>
-            )
-          })}
+          {activeItems.length ? activeItems.map(itemRow) : <div className="empty">ยังไม่มีรายการประจำ</div>}
         </div>
+        {endedItems.length > 0 && (
+          <>
+            <button className="fold-btn" aria-expanded={showEnded} onClick={() => setShowEnded(!showEnded)}>
+              รายการที่จบแล้ว ({endedItems.length}) <ChevronDown size={16} strokeWidth={1.8} />
+            </button>
+            {showEnded && <div className="list ended">{endedItems.map(itemRow)}</div>}
+          </>
+        )}
         <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setItem('new')}><Plus size={18} strokeWidth={1.6} /> เพิ่มรายการประจำ</button>
       </div>
 
@@ -225,18 +235,34 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
       <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>{item ? 'แก้ยอด/ช่วงเดือนแล้ว เดือนที่มีอยู่ไม่เปลี่ยนตาม — แก้รายเดือนได้ในหน้าแผนเดือน' : 'รายการใหม่จะลงทุกเดือนตั้งแต่เดือนเริ่ม (รวมเดือนที่มีอยู่แล้ว)'}</p>
       <button className="btn primary" disabled={!clean || !p.ok || !monthOk || busy} onClick={save}>บันทึก</button>
       {item && (
-        <div style={{ marginTop: 10 }}>
+        <div className="item-actions">
+          {!(item.endMonth !== null && item.endMonth < thisMonth) && (
+            <ConfirmButton
+              label={`เลิกรายการนี้ตั้งแต่ ${monthLabel(thisMonth)}`}
+              confirmLabel="แตะอีกครั้งเพื่อยืนยัน (ย้ายไปรายการที่จบแล้ว)"
+              disabled={busy}
+              onConfirm={() =>
+                run(async () => {
+                  await stopItem(repo, item, thisMonth)
+                  onClose()
+                }, 'เลิกรายการแล้ว', 'delete')
+              }
+            />
+          )}
           <ConfirmButton
-            label={`เลิกรายการนี้ตั้งแต่ ${monthLabel(thisMonth)}`}
-            confirmLabel="แตะอีกครั้งเพื่อยืนยัน (เดือนที่จ่ายแล้วยังอยู่)"
+            label="ลบรายการนี้"
+            confirmLabel="แตะอีกครั้งเพื่อลบ (เดือนที่จ่ายแล้วเก็บเป็นประวัติ)"
             disabled={busy}
             onConfirm={() =>
               run(async () => {
-                await stopItem(repo, item, thisMonth)
+                await removeItem(repo, item, thisMonth)
                 onClose()
-              }, 'เลิกรายการแล้ว', 'delete')
+              }, `ลบ ${item.name} แล้ว`, 'delete')
             }
           />
+          <p className="muted" style={{ fontSize: 12, margin: '2px 4px 0' }}>
+            ทั้งสองแบบ: เดือน {monthLabel(thisMonth)} เป็นต้นไปที่ยังไม่จ่ายจะหายไป · เดือนก่อนหน้าไม่เปลี่ยน
+          </p>
         </div>
       )}
     </Sheet>
