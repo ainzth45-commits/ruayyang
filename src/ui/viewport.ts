@@ -15,10 +15,11 @@ export interface ViewportVars {
 /** ส่วนต่าง > 120px ถึงจะนับว่าแป้นเปิด (กันแถบ URL ยืด/หด) */
 const KB_MIN = 120
 
-export function computeViewport(innerHeight: number, vvHeight: number, vvOffsetTop: number): ViewportVars {
+/** layoutHeight = ความสูงจอตอนแป้นปิด (ไม่ใช่ window.innerHeight ตอนแป้นเปิด — iOS หดค่านั้นตามแป้น) */
+export function computeViewport(layoutHeight: number, vvHeight: number, vvOffsetTop: number): ViewportVars {
   const vvh = Math.round(vvHeight)
   const vvt = Math.max(0, Math.round(vvOffsetTop))
-  return { vvh, vvt, kb: Math.max(0, Math.round(innerHeight - vvHeight - vvOffsetTop)), open: innerHeight - vvHeight > KB_MIN }
+  return { vvh, vvt, kb: Math.max(0, Math.round(layoutHeight - vvHeight - vvOffsetTop)), open: layoutHeight - vvHeight > KB_MIN }
 }
 
 const SCROLLABLE = '.scroller, .sheet, .login, .chips'
@@ -31,9 +32,19 @@ export function installViewport(): void {
   const root = document.documentElement
   const vv = window.visualViewport
 
+  // ความสูงจอตอนแป้นปิด: iOS ลด window.innerHeight ตามแป้นด้วย (เป็น visual viewport) → ใช้เทียบไม่ได้
+  // จึงจำค่าล่าสุดตอนไม่มีช่องกรอกถูก focus ไว้ (หมุนจอ/แถบ URL เปลี่ยนก็อัปเดตตาม)
+  let baseH = 0
+  const typing = () => !!(document.activeElement as Element | null)?.matches?.('input, textarea, select, [contenteditable]')
+  const layoutHeight = () => {
+    const h = Math.max(document.documentElement.clientHeight, window.innerHeight)
+    if (!typing() || baseH === 0) baseH = h
+    return Math.max(baseH, h)
+  }
+
   const apply = () => {
     if (!vv) return
-    const v = computeViewport(window.innerHeight, vv.height, vv.offsetTop)
+    const v = computeViewport(layoutHeight(), vv.height, vv.offsetTop)
     root.style.setProperty('--vvh', `${v.vvh}px`)
     root.style.setProperty('--vvt', `${v.vvt}px`)
     root.style.setProperty('--kb', `${v.kb}px`)
@@ -41,6 +52,8 @@ export function installViewport(): void {
   }
   vv?.addEventListener('resize', apply)
   vv?.addEventListener('scroll', apply)
+  window.addEventListener('orientationchange', () => { baseH = 0; window.setTimeout(apply, 300) })
+  document.addEventListener('focusout', () => window.setTimeout(apply, 50))
   apply()
 
   // iOS ชอบเลื่อนทั้งหน้าตอน focus ช่องกรอก — ดึงกลับ (เราจัดตำแหน่งเองด้วย --vvt/--kb แล้ว)
