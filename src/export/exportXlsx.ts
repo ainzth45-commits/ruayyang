@@ -26,7 +26,7 @@ export function buildPlanSheet(d: ExportData): Cell[][] {
     d.items
       .filter((i) => i.kind === kind && months.some((m) => amount(i.id, m) !== undefined))
       .map((i) => [i.name + (i.isEstimate && !i.name.includes('(') ? ' (ประมาณ)' : ''), ...months.map((m) => { const a = amount(i.id, m); return a === undefined ? null : baht(a) })])
-  const sums = d.records.map((r) => summarizeMonth(r.month, d.items, d.entries, d.txs, r, d.savings))
+  const sums = d.records.map((r) => summarizeMonth(r.month, d.items, d.entries, d.txs, r, d.savings, d.records))
   const money = (v: number | null) => (v === null ? null : baht(v))
   return [
     ['รายการ', ...months.map((m) => monthLabel(m))],

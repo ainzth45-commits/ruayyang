@@ -1,6 +1,7 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import type { Auth, AuthUser, Repo } from './repo'
-import { fromSatang, toSatang } from '../domain/money'
+import { fromSatang, MAX_SATANG, toSatang } from '../domain/money'
+import { cycleForDate } from '../domain/cycle'
 import type { Category, MonthEntry, MonthKey, MonthRecord, NewEntry, NewSaving, NewTransaction, RecurringItem, Saving, Transaction, UserSettings } from '../domain/types'
 
 const toDate = (m: MonthKey) => `${m}-01`
@@ -32,6 +33,7 @@ const mapItem = (r: Row): RecurringItem => ({
 })
 const mapEntry = (r: Row): MonthEntry => ({
   id: r.id, itemId: r.item_id, month: toMonth(r.month), amount: toSatang(r.amount), paid: r.paid, note: r.note,
+  ...(r.receipt_path === undefined ? {} : { receiptPath: r.receipt_path }),
 })
 const mapMonth = (r: Row): MonthRecord => ({
   month: toMonth(r.month),
@@ -41,6 +43,7 @@ const mapMonth = (r: Row): MonthRecord => ({
 })
 const mapSaving = (r: Row): Saving => ({
   id: r.id, date: r.date, amount: toSatang(r.amount), note: r.note, kind: r.kind, createdAt: r.created_at,
+  ...(r.cycle_month === undefined ? {} : { cycleMonth: r.cycle_month ? toMonth(r.cycle_month) : null }),
 })
 function savingRow(x: Partial<NewSaving>): Row {
   const r: Row = {}
@@ -48,6 +51,7 @@ function savingRow(x: Partial<NewSaving>): Row {
   if (x.amount !== undefined) r.amount = fromSatang(x.amount)
   if (x.note !== undefined) r.note = x.note
   if (x.kind !== undefined) r.kind = x.kind
+  if (x.cycleMonth !== undefined) r.cycle_month = x.cycleMonth === null ? null : toDate(x.cycleMonth)
   return r
 }
 const mapTx = (r: Row): Transaction => ({
@@ -60,6 +64,7 @@ const mapTx = (r: Row): Transaction => ({
   slipHash: r.slip_hash,
   ocrAmount: money(r.ocr_amount),
   createdAt: r.created_at,
+  ...(r.cycle_month === undefined ? {} : { cycleMonth: r.cycle_month ? toMonth(r.cycle_month) : null }),
 })
 
 function txRow(t: Partial<NewTransaction>): Row {
@@ -71,12 +76,32 @@ function txRow(t: Partial<NewTransaction>): Row {
   if (t.slipPath !== undefined) r.slip_path = t.slipPath
   if (t.slipHash !== undefined) r.slip_hash = t.slipHash
   if (t.ocrAmount !== undefined) r.ocr_amount = t.ocrAmount === null ? null : fromSatang(t.ocrAmount)
+  if (t.cycleMonth !== undefined) r.cycle_month = t.cycleMonth === null ? null : toDate(t.cycleMonth)
   return r
 }
 
 export class SupabaseRepo implements Repo {
   readonly kind = 'supabase' as const
   constructor(private sb: SupabaseClient) {}
+
+  private async allRows(what: string, query: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: PostgrestError | null; count?: number | null }>): Promise<Row[]> {
+    const rows: Row[] = []
+    const pageSize = 1000
+    while (true) {
+      const { data, error, count } = await query(rows.length, rows.length + pageSize - 1)
+      if (error) fail(error, what)
+      if (!data?.length) {
+        if (count !== null && count !== undefined && rows.length < count) throw new Error(`${what}ไม่ครบ กรุณาลองใหม่`)
+        return rows
+      }
+      rows.push(...data)
+      if (count !== null && count !== undefined ? rows.length >= count : data.length < pageSize) return rows
+    }
+  }
+
+  private async cycleAt(date: string): Promise<MonthKey> {
+    return cycleForDate(date, await this.listMonths('2000-01', date.slice(0, 7)))
+  }
 
   private async uid(): Promise<string> {
     const { data } = await this.sb.auth.getSession()
@@ -158,9 +183,16 @@ export class SupabaseRepo implements Repo {
     await this.patchMonth(month, { closed_at: closedAt }, 'บันทึกการปิดเดือน')
   }
 
+  async closeMonthAtomic(month: MonthKey, actual: number, save: number, nowIso: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !Number.isFinite(Date.parse(nowIso))) throw new Error('รอบเงินหรือเวลาปิดยอดไม่ถูกต้อง')
+    if (!Number.isSafeInteger(actual) || Math.abs(actual) > MAX_SATANG || !Number.isSafeInteger(save) || save < 0 || save > Math.max(actual, 0)) throw new Error('ยอดปิดหรือยอดแยกเก็บไม่ถูกต้อง')
+    const { error } = await this.sb.rpc('close_month_ledger', { p_month: toDate(month), p_actual: fromSatang(actual), p_save: fromSatang(save), p_closed_at: nowIso })
+    if (error?.code === 'PGRST202' || error?.code === '42883') throw new Error('ต้องอัปเดตฐานข้อมูลสำหรับการปิดยอดแบบใหม่ก่อน กรุณาติดต่อผู้ดูแล')
+    if (error) fail(error, 'ปิดยอด')
+  }
+
   async listEntries(from: MonthKey, to: MonthKey) {
-    const { data, error } = await this.sb.from('month_entries').select('*').gte('month', toDate(from)).lte('month', toDate(to))
-    if (error) fail(error, 'โหลดรายการเดือน')
+    const data = await this.allRows('โหลดรายการเดือน', (start, end) => this.sb.from('month_entries').select('*', { count: 'exact' }).gte('month', toDate(from)).lte('month', toDate(to)).order('month').order('id').range(start, end))
     return data.map(mapEntry)
   }
 
@@ -169,6 +201,7 @@ export class SupabaseRepo implements Repo {
     const user_id = await this.uid()
     const rows = entries.map((e) => ({
       user_id, item_id: e.itemId, month: toDate(e.month), amount: fromSatang(e.amount), paid: e.paid, note: e.note,
+      ...(e.receiptPath === undefined ? {} : { receipt_path: e.receiptPath }),
     }))
     // แบ่ง batch กัน payload ใหญ่เกิน
     for (let i = 0; i < rows.length; i += 500) {
@@ -179,31 +212,36 @@ export class SupabaseRepo implements Repo {
     }
   }
 
-  async updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note'>>) {
+  async updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note' | 'receiptPath'>>) {
     const row: Row = {}
     if (patch.amount !== undefined) row.amount = fromSatang(patch.amount)
     if (patch.paid !== undefined) row.paid = patch.paid
     if (patch.note !== undefined) row.note = patch.note
+    if (patch.receiptPath !== undefined) row.receipt_path = patch.receiptPath
     const { error, count } = await this.sb.from('month_entries').update(row, { count: 'exact' }).eq('id', id)
     if (error) fail(error, 'บันทึกรายการ')
     if (count === 0) throw new Error('ไม่พบรายการนี้แล้ว')
   }
 
-  async deleteEntries(ids: string[]) {
-    if (!ids.length) return
+  async deleteEntries(ids: string[]): Promise<string | null> {
+    if (!ids.length) return null
+    const entries = await this.allRows('โหลดหลักฐานรายการ', (start, end) => this.sb
+      .from('month_entries').select('receipt_path', { count: 'exact' }).in('id', ids).order('id').range(start, end))
+    const paths = [...new Set(entries.map((e) => e.receipt_path).filter((p): p is string => typeof p === 'string' && !!p))]
     const { error } = await this.sb.from('month_entries').delete().in('id', ids)
     if (error) fail(error, 'ลบรายการ')
+    const results = await Promise.allSettled(paths.map((path) => this.deleteSlip(path)))
+    return results.some((r) => r.status === 'rejected') ? 'ลบรายการแล้ว แต่ลบรูปหลักฐานบางรูปไม่สำเร็จ' : null
   }
 
   async listTransactions(from: string, to: string) {
-    const { data, error } = await this.sb
+    const data = await this.allRows('โหลดรายจ่าย', (start, end) => this.sb
       .from('transactions')
-      .select('*')
+      .select('*', { count: 'exact' })
       .gte('date', from)
       .lte('date', to)
       .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
-    if (error) fail(error, 'โหลดรายจ่าย')
+      .order('created_at', { ascending: false }).order('id').range(start, end))
     return data.map(mapTx)
   }
 
@@ -214,14 +252,22 @@ export class SupabaseRepo implements Repo {
   }
 
   async addTransaction(t: NewTransaction) {
-    const { data, error } = await this.sb.from('transactions').insert(txRow(t)).select().single()
+    const cycleMonth = t.cycleMonth ?? await this.cycleAt(t.date)
+    const { data, error } = await this.sb.from('transactions').insert(txRow({ ...t, cycleMonth })).select().single()
     if (error?.code === '23505') throw new Error('สลิปนี้บันทึกไปแล้ว')
     if (error) fail(error, 'บันทึกรายจ่าย')
     return mapTx(data)
   }
 
   async updateTransaction(id: string, patch: Partial<NewTransaction>) {
-    const { error, count } = await this.sb.from('transactions').update(txRow(patch), { count: 'exact' }).eq('id', id)
+    let resolved = patch
+    if (patch.date !== undefined && patch.cycleMonth === undefined) {
+      const { data, error } = await this.sb.from('transactions').select('date').eq('id', id).maybeSingle()
+      if (error) fail(error, 'โหลดรายการ')
+      if (!data) throw new Error('ไม่พบรายการนี้แล้ว')
+      if (patch.date !== data.date) resolved = { ...patch, cycleMonth: await this.cycleAt(patch.date) }
+    }
+    const { error, count } = await this.sb.from('transactions').update(txRow(resolved), { count: 'exact' }).eq('id', id)
     if (error) fail(error, 'แก้ไขรายจ่าย')
     if (count === 0) throw new Error('ไม่พบรายการนี้แล้ว')
   }
@@ -232,25 +278,32 @@ export class SupabaseRepo implements Repo {
   }
 
   async listSavings(from: string, to: string) {
-    const { data, error } = await this.sb
+    const data = await this.allRows('โหลดเงินเก็บ', (start, end) => this.sb
       .from('savings')
-      .select('*')
+      .select('*', { count: 'exact' })
       .gte('date', from)
       .lte('date', to)
       .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
-    if (error) fail(error, 'โหลดเงินเก็บ')
+      .order('created_at', { ascending: false }).order('id').range(start, end))
     return data.map(mapSaving)
   }
 
   async addSaving(x: NewSaving) {
-    const { data, error } = await this.sb.from('savings').insert(savingRow(x)).select().single()
+    const resolved = x.kind === 'deposit' ? { ...x, cycleMonth: x.cycleMonth ?? await this.cycleAt(x.date) } : x
+    const { data, error } = await this.sb.from('savings').insert(savingRow(resolved)).select().single()
     if (error) fail(error, 'บันทึกเงินเก็บ')
     return mapSaving(data)
   }
 
   async updateSaving(id: string, patch: Partial<NewSaving>) {
-    const { error, count } = await this.sb.from('savings').update(savingRow(patch), { count: 'exact' }).eq('id', id)
+    let resolved = patch
+    if (patch.date !== undefined && patch.cycleMonth === undefined) {
+      const { data, error } = await this.sb.from('savings').select('date,kind').eq('id', id).maybeSingle()
+      if (error) fail(error, 'โหลดเงินเก็บ')
+      if (!data) throw new Error('ไม่พบรายการนี้แล้ว')
+      if (patch.date !== data.date && (patch.kind ?? data.kind) === 'deposit') resolved = { ...patch, cycleMonth: await this.cycleAt(patch.date) }
+    }
+    const { error, count } = await this.sb.from('savings').update(savingRow(resolved), { count: 'exact' }).eq('id', id)
     if (error) fail(error, 'แก้ไขเงินเก็บ')
     if (count === 0) throw new Error('ไม่พบรายการนี้แล้ว')
   }

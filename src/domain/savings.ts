@@ -1,5 +1,6 @@
 import type { Repo } from '../data/repo'
-import { addMonths, monthEndDate, monthOf, monthStartDate } from './month'
+import { addMonths, monthEndDate, monthOf } from './month'
+import { MAX_SATANG } from './money'
 import type { DateKey, MonthKey, MonthRecord, Satang, Saving } from './types'
 
 /** เงินเก็บสะสม = ยอดตั้งต้น + เงินเก็บทุกรายการ */
@@ -35,17 +36,8 @@ export function needsClosing(today: DateKey, records: MonthRecord[]): MonthKey |
  * เรียกซ้ำได้ (แก้การปิดเดือน) — แก้/ลบรายการปิดเดือนเดิม ไม่สร้างซ้ำ
  */
 export async function closeMonth(repo: Repo, month: MonthKey, actual: Satang, save: Satang, nowIso: string): Promise<void> {
-  if (!Number.isInteger(save) || save < 0) throw new Error('ยอดแยกเก็บต้องไม่ติดลบ')
-  await repo.setActualBalance(month, actual)
-  const existing = (await repo.listSavings(monthStartDate(month), monthEndDate(month))).filter((s) => s.kind === 'close')
-  const [keep, ...extra] = existing
-  for (const s of extra) await repo.deleteSaving(s.id)
-  if (save === 0) {
-    if (keep) await repo.deleteSaving(keep.id)
-  } else if (keep) {
-    await repo.updateSaving(keep.id, { amount: save, date: monthEndDate(month) })
-  } else {
-    await repo.addSaving({ date: monthEndDate(month), amount: save, note: 'แยกเก็บตอนปิดเดือน', kind: 'close' })
-  }
-  await repo.setMonthClosed(month, nowIso)
+  if (!Number.isSafeInteger(actual) || Math.abs(actual) > MAX_SATANG) throw new Error('ยอดคงเหลือจริงไม่ถูกต้อง')
+  if (!Number.isSafeInteger(save) || save < 0 || save > Math.max(0, actual)) throw new Error('ยอดแยกเก็บต้องไม่ติดลบและไม่เกินเงินคงเหลือจริง')
+  if (!Number.isFinite(Date.parse(nowIso))) throw new Error('เวลาปิดยอดไม่ถูกต้อง')
+  await repo.closeMonthAtomic(month, actual, save, nowIso)
 }

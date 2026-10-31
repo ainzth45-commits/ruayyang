@@ -34,6 +34,7 @@ export interface MonthEntry {
   amount: Satang
   paid: boolean
   note: string | null
+  receiptPath?: string | null
 }
 
 export interface MonthRecord {
@@ -55,6 +56,8 @@ export interface Transaction {
   slipHash: string | null
   ocrAmount: Satang | null
   createdAt: string
+  /** รอบเงินที่หักยอด แยกจากวันที่ใช้เงินจริง; null = ข้อมูลเดิม */
+  cycleMonth?: MonthKey | null
 }
 
 /** deposit = เก็บระหว่างเดือน · close = แยกเก็บตอนปิดเดือน (เดือนละ 1 รายการ ลงวันสุดท้ายของเดือน) */
@@ -67,6 +70,7 @@ export interface Saving {
   note: string | null
   kind: SavingKind
   createdAt: string
+  cycleMonth?: MonthKey | null
 }
 
 export interface UserSettings {

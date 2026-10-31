@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CalendarCheck, Plus, TableProperties } from 'lucide-react'
 import { entryStatus, summarizeMonth } from '../../domain/calc'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
@@ -9,6 +9,7 @@ import type { ItemKind, MonthEntry, MonthKey, RecurringItem } from '../../domain
 import { Money } from '../components/Money'
 import { MonthSwitcher } from '../components/MonthSwitcher'
 import { PageHeader } from '../components/PageHeader'
+import { ReceiptAttachment } from '../components/ReceiptAttachment'
 import { CloseMonthSheet } from '../components/CloseMonthSheet'
 import { ConfirmButton, Sheet } from '../components/Sheet'
 import { blurOnEnter, moneyInputProps, textInputProps } from '../inputs'
@@ -19,13 +20,23 @@ const STATUS_LABEL = { paid: 'จ่ายแล้ว', estimate: 'ประม
 
 export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKey) => void }) {
   const { repo } = useApp()
-  const { data } = useLoad(() => loadMonth(repo, month), [month])
+  const { data, loading, reload } = useLoad(() => loadMonth(repo, month), [month])
   const [editing, setEditing] = useState<MonthEntry | null>(null)
   const [adding, setAdding] = useState(false)
   const [year, setYear] = useState(false)
   const [closing, setClosing] = useState(false)
 
-  if (!data) return <div className="page"><div className="empty">กำลังโหลด…</div></div>
+  useEffect(() => {
+    setEditing(null)
+    setAdding(false)
+    setYear(false)
+    setClosing(false)
+  }, [month])
+
+  const header = <PageHeader eyebrow="03 — Monthly plan" title="แผนเดือน" sub={`${monthLabel(month, { long: true })} · รับเงิน จ่ายบิล แล้วเริ่มรอบใหม่`} right={<MonthSwitcher month={month} onChange={onMonth} />} />
+  if (!data || data.month !== month) return <div className="page">{header}<div className="empty" role="status">
+    {loading ? 'กำลังโหลด…' : <><p>โหลดข้อมูลไม่สำเร็จ</p><button type="button" className="btn ghost" onClick={reload}>ลองใหม่</button></>}
+  </div></div>
   const s = data.summary
   const itemById = new Map(data.items.map((i) => [i.id, i]))
   const sorted = [...data.entries].sort((a, b) => (itemById.get(a.itemId)?.sort ?? 999) - (itemById.get(b.itemId)?.sort ?? 999))
@@ -40,6 +51,7 @@ export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKe
         <span>
           <div className="title">{it?.name ?? 'รายการที่ถูกลบ'}</div>
           {e.note && <div className="meta-t">{e.note}</div>}
+          {e.receiptPath && <div className="meta-t">มีหลักฐานชำระ</div>}
         </span>
         {it?.kind === 'income' ? <span /> : <span className={`chip ${st}`}>{STATUS_LABEL[st]}</span>}
         <Money v={e.amount} className="amt" />
@@ -49,7 +61,7 @@ export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKe
 
   return (
     <div className="page">
-      <PageHeader eyebrow="03 — Monthly plan" title="แผนเดือน" sub={monthLabel(month, { long: true })} right={<MonthSwitcher month={month} onChange={onMonth} />} />
+      {header}
 
       <div className="boxes" style={{ marginBottom: 12 }}>
         <div className="box"><div className="l">แผนเหลือไว้ใช้ {monthLabel(s.spendMonth)}</div><div className={`v ${s.planLeft < 0 ? 'neg' : 'gold'}`}>{formatBaht(s.planLeft)}</div><div className="s">รับ − จ่ายประจำ</div></div>
@@ -61,11 +73,11 @@ export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKe
         <div className="ledger-line"><span>จ่ายประจำ</span><Money v={-s.fixedExpense} /></div>
         <div className="ledger-line total"><span>แผนเหลือไว้ใช้ {monthLabel(s.spendMonth)}</span><Money v={s.planLeft} className={s.planLeft < 0 ? 'neg' : ''} /></div>
         {/* key: รีเซ็ต state เมื่อเปลี่ยนเดือน/ค่าเปลี่ยน กันยอดเดือนก่อนค้างไปบันทึกทับเดือนใหม่ */}
-        <ActualBalance key={`${month}-${s.actualBalance}`} month={month} value={s.actualBalance} />
+        <div className="ledger-line"><span>ยอดปิดจริง</span><span>{s.actualBalance === null ? 'ยังไม่ปิดยอด' : formatBaht(s.actualBalance)}</span></div>
         {s.savedAtClose > 0 && <div className="ledger-line"><span>แยกเก็บตอนปิดเดือน</span><Money v={-s.savedAtClose} /></div>}
       </div>
 
-      <div className="section-head" style={{ marginTop: 22 }}><h2>ใช้จ่ายช่วง {monthLabel(s.spendMonth, { long: true })}</h2></div>
+      <div className="section-head" style={{ marginTop: 22 }}><h2>เงินรอบที่เริ่มจากยอดปิด {monthLabel(month)}</h2></div>
       <div className="panel cycle" style={{ padding: '8px 20px' }}>
         <div className="ledger-line"><span>เงินตั้งต้น{s.actualBalance === null ? ' (ตามแผน)' : ''}</span><Money v={s.startMoney} /></div>
         <div className="ledger-line"><span>ใช้รายวัน</span><Money v={-s.daily} /></div>
@@ -73,8 +85,8 @@ export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKe
         <div className="ledger-line total"><span>เงินรอบนี้เหลือ</span><Money v={s.left} className={s.left < 0 ? 'neg' : 'pos'} /></div>
       </div>
 
-      <button className="btn primary" style={{ marginTop: 12 }} onClick={() => setClosing(true)}>
-        <CalendarCheck size={18} strokeWidth={1.8} /> {isMonthClosed(data.record ?? undefined) ? 'แก้การปิดเดือน' : `ปิดเดือน ${monthLabel(month)}`}
+      <button className="btn primary" style={{ marginTop: 12 }} disabled={month > monthOf(bangkokToday())} onClick={() => setClosing(true)}>
+        <CalendarCheck size={18} strokeWidth={1.8} /> {isMonthClosed(data.record ?? undefined) ? 'แก้ยอดปิดรอบนี้' : 'ปิดยอดและเริ่มรอบใหม่'}
       </button>
 
       <button className="btn ghost" style={{ marginTop: 12 }} onClick={() => setYear(true)}>
@@ -101,48 +113,8 @@ export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKe
   )
 }
 
-function ActualBalance({ month, value }: { month: MonthKey; value: number | null }) {
-  const { repo } = useApp()
-  const { run } = useAction()
-  const [text, setText] = useState(value === null ? '' : formatBaht(value))
-  const [err, setErr] = useState<string | null>(null)
-  const commit = () => {
-    const t = text.trim()
-    if (!t) {
-      if (value !== null) run(() => repo.setActualBalance(month, null))
-      setErr(null)
-      return
-    }
-    const neg = t.startsWith('-')
-    const p = parseMoneyInput(neg ? t.slice(1) : t, { allowZero: true })
-    if (!p.ok) return setErr(p.error)
-    setErr(null)
-    const v = neg ? -p.value : p.value
-    setText(formatBaht(v))
-    if (v !== value) run(() => repo.setActualBalance(month, v), 'บันทึกคงเหลือจริงแล้ว', 'save')
-  }
-  return (
-    <div className="ledger-line" style={{ alignItems: 'center' }}>
-      <span>คงเหลือจริง</span>
-      <span style={{ textAlign: 'right' }}>
-        <input
-          className={`input num ${err ? 'err' : ''}`}
-          style={{ width: 150, height: 38, textAlign: 'right' }}
-          {...moneyInputProps}
-          placeholder="กรอกยอดจริง"
-          aria-label="คงเหลือจริง"
-          defaultValue={value === null ? '' : formatBaht(value)}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={commit}
-        />
-        {err && <div className="err-text">{err}</div>}
-      </span>
-    </div>
-  )
-}
-
 function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: RecurringItem | undefined; onClose: () => void }) {
-  const { repo } = useApp()
+  const { repo, toast } = useApp()
   const { busy, run } = useAction()
   const [amount, setAmount] = useState(formatBaht(entry.amount))
   const [paid, setPaid] = useState(entry.paid)
@@ -174,6 +146,7 @@ function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: Recurri
           <button className="toggle" role="switch" aria-checked={carry} aria-label="ใช้ยอดนี้กับเดือนถัดไปด้วย" onClick={() => setCarry(!carry)} />
         </div>
       )}
+      {!isIncome && <ReceiptAttachment entry={entry} />}
       <label className="field" style={{ marginTop: 14 }}>
         <span>โน้ต</span>
         <input className="input" {...textInputProps} onKeyDown={blurOnEnter} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
@@ -197,12 +170,14 @@ function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: Recurri
           label="เอาออกจากเดือนนี้"
           confirmLabel="แตะอีกครั้งเพื่อยืนยัน"
           disabled={busy}
-          onConfirm={() =>
-            run(async () => {
-              await repo.deleteEntries([entry.id])
+          onConfirm={async () => {
+            const warning = await run(async () => {
+              const warning = await repo.deleteEntries([entry.id])
               onClose()
+              return warning
             }, 'เอาออกแล้ว', 'delete')
-          }
+            if (warning) toast(warning, 'error')
+          }}
         />
       </div>
     </Sheet>
@@ -285,7 +260,7 @@ function YearSheet({ current, onPick, onClose }: { current: MonthKey; onPick: (m
       repo.listTransactions(monthStartDate(first), monthEndDate(last)),
     ])
     const savings = await repo.listSavings(monthStartDate(first), monthEndDate(last))
-    return records.map((r) => summarizeMonth(r.month, items, entries, txs, r, savings))
+    return records.map((r) => summarizeMonth(r.month, items, entries, txs, r, savings, records))
   }, [])
   return (
     <Sheet title="ภาพรวมทุกเดือน" onClose={onClose}>

@@ -1,9 +1,10 @@
 import { addMonths, daysInMonth, monthOf } from './month'
+import { transactionCycle } from './cycle'
 import type { DateKey, MonthEntry, MonthKey, MonthRecord, RecurringItem, Satang, Saving, Transaction } from './types'
 
 /**
  * สรุป "รอบเงินเดือน" M (ปิดรอบวันสุดท้ายของ M):
- * รับเงินเดือน M + จ่ายบิลประจำ M → เงินที่เหลือเอาไว้ใช้ตลอดเดือน M+1 (spendMonth)
+ * รับเงินเดือน M + จ่ายบิลประจำ M → ปิดยอดเริ่มใช้ได้ทันทีต่อเนื่องใน M+1
  */
 export interface MonthSummary {
   month: MonthKey
@@ -21,9 +22,9 @@ export interface MonthSummary {
   savedAtClose: Satang
   /** เงินตั้งต้นใช้เดือนหน้า = (คงเหลือจริง หรือแผนเหลือถ้ายังไม่กรอก) − แยกเก็บตอนปิด */
   startMoney: Satang
-  /** รายจ่ายรายวันใน spendMonth */
+  /** รายจ่ายรายวันของรอบนี้ (วันที่จริงอาจเริ่มปลายเดือน M) */
   daily: Satang
-  /** เก็บเงินระหว่าง spendMonth */
+  /** เก็บเงินระหว่างรอบนี้ */
   savedDeposits: Satang
   /** เงินรอบนี้เหลือ = เงินตั้งต้น − ใช้รายวัน − เก็บระหว่างเดือน */
   left: Satang
@@ -47,8 +48,10 @@ export function summarizeMonth(
   txs: Transaction[],
   record: MonthRecord | null,
   savings: Saving[] = [],
+  records: MonthRecord[] = [],
 ): MonthSummary {
   const spendMonth = addMonths(month, 1)
+  const cycleRecords = record && !records.some((r) => r.month === record.month) ? [...records, record] : records
   const byId = new Map(items.map((i) => [i.id, i]))
   let income = 0
   let fixedExpense = 0
@@ -66,13 +69,13 @@ export function summarizeMonth(
     if (st === 'estimate') pendingEstimates++
     else if (st === 'pending') unpaid++
   }
-  const daily = txs.reduce((s, t) => (monthOf(t.date) === spendMonth ? s + t.amount : s), 0)
+  const daily = txs.reduce((s, t) => (transactionCycle(t, cycleRecords) === month ? s + t.amount : s), 0)
   let savedDeposits = 0
   let savedAtClose = 0
   for (const sv of savings) {
     const m = monthOf(sv.date)
     if (sv.kind === 'close' && m === month) savedAtClose += sv.amount
-    else if (sv.kind === 'deposit' && m === spendMonth) savedDeposits += sv.amount
+    else if (sv.kind === 'deposit' && transactionCycle(sv, cycleRecords) === month) savedDeposits += sv.amount
   }
   const planLeft = income - fixedExpense
   const actualBalance = record?.actualBalance ?? null

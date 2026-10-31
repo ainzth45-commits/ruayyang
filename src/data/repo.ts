@@ -34,12 +34,14 @@ export interface Repo {
   /** งบใช้จ่ายของเดือน (null = ใช้ของเดือนก่อนหน้า) */
   setMonthBudget(month: MonthKey, value: Satang | null): Promise<void>
   setMonthClosed(month: MonthKey, closedAt: string | null): Promise<void>
+  closeMonthAtomic(month: MonthKey, actual: Satang, save: Satang, nowIso: string): Promise<void>
 
   listEntries(from: MonthKey, to: MonthKey): Promise<MonthEntry[]>
   /** ข้ามแถวที่ (itemId, month) ซ้ำ */
   insertEntriesIfAbsent(entries: NewEntry[]): Promise<void>
-  updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note'>>): Promise<void>
-  deleteEntries(ids: string[]): Promise<void>
+  updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note' | 'receiptPath'>>): Promise<void>
+  /** ลบแถวก่อนล้างหลักฐาน; คืนคำเตือนถ้าลบรายการแล้วแต่ล้างไฟล์ไม่ครบ */
+  deleteEntries(ids: string[]): Promise<string | null>
 
   listTransactions(from: DateKey, to: DateKey): Promise<Transaction[]>
   findTransactionBySlipHash(hash: string): Promise<Transaction | null>

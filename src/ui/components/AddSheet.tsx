@@ -9,10 +9,8 @@ import { compressImage, sha256Hex } from '../../ocr/image'
 import { readSlipAmount, warmUpOcr } from '../../ocr/ocr'
 import { play } from '../sound'
 import { useAction, useApp, useLoad } from '../store'
-import { SavingForm, type SavingValues } from './SavingSheets'
 import { Sheet } from './Sheet'
 import { TxForm, type TxValues } from './TxForm'
-import { primeKeyboard } from '../viewport'
 
 interface SlipState {
   file: File
@@ -33,7 +31,6 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
     const [categories, recent] = await Promise.all([repo.listCategories(), repo.listTransactions(addDays(today, -60), today)])
     return { categories, recent }
   }, [today])
-  const [kind, setKind] = useState<'expense' | 'saving'>('expense')
   const [mode, setMode] = useState<'manual' | 'slip'>('manual')
   const [picked, setPicked] = useState<File | null>(null)
   const [zoom, setZoom] = useState(false)
@@ -55,6 +52,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
         dup = await repo.findTransactionBySlipHash(hash)
       } catch (e) {
         console.warn('ตรวจสลิปซ้ำไม่ได้', e)
+        if (alive) toast('ตรวจสลิปซ้ำไม่ได้ กรุณาเช็กว่าไม่เคยบันทึกใบนี้แล้ว', 'error')
       }
       if (!alive) return
       if (dup) play('warn')
@@ -120,12 +118,6 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
     })
   }
 
-  const saveSaving = (v: SavingValues) =>
-    run(async () => {
-      await repo.addSaving({ ...v, kind: 'deposit' })
-      onClose()
-    }, `เก็บเพิ่ม ${formatBaht(v.amount)} บาทแล้ว`, 'stash')
-
   const pickSlips = () => {
     warmUpOcr()
     fileRef.current?.click()
@@ -149,49 +141,26 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
 
   if (mode === 'manual') {
     return (
-      <Sheet title={kind === 'expense' ? 'เพิ่มรายจ่าย' : 'เก็บเงิน'} onClose={onClose}>
-        <div className="seg" role="tablist" aria-label="ประเภท">
-          <button role="tab" aria-pressed={kind === 'expense'} aria-selected={kind === 'expense'} onClick={() => { if (kind !== 'expense') primeKeyboard(); setKind('expense') }}>รายจ่าย</button>
-          <button role="tab" aria-pressed={kind === 'saving'} aria-selected={kind === 'saving'} onClick={() => { if (kind !== 'saving') primeKeyboard(); setKind('saving') }}>เก็บเงิน</button>
-        </div>
-        {kind === 'saving' ? (
-          <SavingForm busy={busy} submitLabel="เก็บเงิน" autoFocus onSubmit={saveSaving} />
-        ) : (
-          <>
-            {picks.length > 0 && (
-              <div className="repeat">
-                <div className="repeat-h"><Repeat2 size={14} strokeWidth={1.8} /> จดซ้ำ แตะเดียวบันทึกวันนี้</div>
-                <div className="chips">
-                  {picks.map((p) => {
-                    const c = catById.get(p.categoryId)
-                    return (
-                      <button key={`${p.categoryId}|${p.note}|${p.amount}`} type="button" className="chip-btn" disabled={busy} onClick={() => saveRepeat(p)}>
-                        <CategoryIcon name={c?.icon} size={15} />
-                        <span>{p.note || c?.name}</span>
-                        <b>{formatBaht(p.amount, { decimals: p.amount % 100 !== 0 })}</b>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            {base.data && (
-              <TxForm
-                categories={categories}
-                initial={{ amount: null, date: today, categoryId: null, note: null }}
-                busy={busy}
-                submitLabel="บันทึก"
-                autoFocusAmount
-                onSubmit={saveManual}
-                amountExtra={
-                  <button type="button" className="scan-btn" onClick={pickSlips}>
-                    <ScanLine size={17} strokeWidth={1.8} /> มีสลิป? สแกนให้อ่านยอดเอง
-                  </button>
-                }
-              />
-            )}
-          </>
+      <Sheet title="เพิ่มรายจ่ายรายวัน" onClose={onClose} verticalOnly>
+        {picks.length > 0 && (
+          <div className="repeat">
+            <div className="repeat-h"><Repeat2 size={14} strokeWidth={1.8} /> จดซ้ำ แตะเดียวบันทึกวันนี้</div>
+            <div className="chips">
+              {picks.map((p) => {
+                const c = catById.get(p.categoryId)
+                return <button key={`${p.categoryId}|${p.note}|${p.amount}`} type="button" className="chip-btn" disabled={busy} onClick={() => saveRepeat(p)}>
+                  <CategoryIcon name={c?.icon} size={15} /><span>{p.note || c?.name}</span><b>{formatBaht(p.amount, { decimals: p.amount % 100 !== 0 })}</b>
+                </button>
+              })}
+            </div>
+          </div>
         )}
+        {base.data ? <TxForm
+          categories={categories}
+          initial={{ amount: null, date: today, categoryId: null, note: null }}
+          busy={busy} submitLabel="บันทึก" autoFocusAmount onSubmit={saveManual}
+          amountExtra={<button type="button" className="scan-btn" onClick={pickSlips}><ScanLine size={17} strokeWidth={1.8} /> มีสลิป? สแกนให้อ่านยอดเอง</button>}
+        /> : <div className="empty">{base.loading ? 'กำลังโหลด…' : <button className="btn ghost" onClick={base.reload}>ลองโหลดอีกครั้ง</button>}</div>}
         {fileInput}
       </Sheet>
     )
@@ -204,7 +173,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
         : 'สลิปนี้เป็นค่าอะไร'
       : 'กำลังอ่านสลิป'
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet title={title} onClose={onClose} verticalOnly>
       {slip && (
         // รูปเล็กข้างตัวหนังสือ: ให้ทั้งฟอร์ม (ยอด/หมวด/วันที่) พอดีจอโดยไม่ต้องเลื่อน · แตะเพื่อดูเต็ม
         <button type="button" className={`slip-strip ${zoom ? 'zoom' : ''}`} onClick={() => setZoom(!zoom)} aria-label={zoom ? 'ย่อรูปสลิป' : 'ดูรูปสลิปเต็ม'}>

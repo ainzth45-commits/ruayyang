@@ -1,21 +1,25 @@
 import { useState, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
+import { cycleForDate, transactionCycle } from '../../domain/cycle'
+import { addMonths, monthLabel, monthOf } from '../../domain/month'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
-import type { Category, DateKey, Satang } from '../../domain/types'
+import type { Category, DateKey, MonthKey, Satang } from '../../domain/types'
 import { CategoryIcon } from '../icons'
 import { blurOnEnter, moneyInputProps, textInputProps } from '../inputs'
 import { DateField } from './Pickers'
+import { useApp, useLoad } from '../store'
 
 export interface TxValues {
   amount: Satang
   date: DateKey
   categoryId: string | null
   note: string | null
+  cycleMonth?: MonthKey | null
 }
 
 export function TxForm(props: {
   categories: Category[]
-  initial: { amount: Satang | null; date: DateKey; categoryId: string | null; note: string | null }
+  initial: { amount: Satang | null; date: DateKey; categoryId: string | null; note: string | null; cycleMonth?: MonthKey | null; createdAt?: string }
   busy: boolean
   submitLabel: string
   onSubmit: (v: TxValues) => void
@@ -25,21 +29,30 @@ export function TxForm(props: {
   amountExtra?: ReactNode
   dateLabel?: string
 }) {
+  const { repo } = useApp()
+  const cycles = useLoad(() => repo.listMonths('2000-01', '9999-12'), [])
   const [amountText, setAmountText] = useState(props.initial.amount === null ? '' : formatBaht(props.initial.amount))
   const [date, setDate] = useState(props.initial.date)
   const [categoryId, setCategoryId] = useState(props.initial.categoryId)
   const [note, setNote] = useState(props.initial.note ?? '')
   const [touched, setTouched] = useState(false)
+  const [cycleChoice, setCycleChoice] = useState<{ date: string; month: MonthKey } | null>(null)
 
   const parsed = parseMoneyInput(amountText)
-  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(date)
-  const canSave = parsed.ok && dateOk && categoryId !== null && !props.busy
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00Z`)) && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date
+  const autoCycle = dateOk && cycles.data ? (date === props.initial.date && props.initial.createdAt
+    ? transactionCycle({ date, createdAt: props.initial.createdAt, cycleMonth: props.initial.cycleMonth }, cycles.data)
+    : cycleForDate(date, cycles.data)) : null
+  const cycleMonth = cycleChoice?.date === date ? cycleChoice.month : autoCycle
+  const latestCycle = dateOk && cycles.data ? cycleForDate(date, cycles.data) : null
+  const cycleOptions = [...new Set([cycleMonth, autoCycle, latestCycle, dateOk ? addMonths(monthOf(date), -1) : null])].filter((m): m is string => !!m)
+  const canSave = parsed.ok && dateOk && categoryId !== null && cycleMonth !== null && !props.busy && !cycles.loading
   const active = props.categories.filter((c) => !c.archived || c.id === categoryId)
 
   const submit = () => {
     setTouched(true)
-    if (!parsed.ok || !dateOk || categoryId === null) return
-    props.onSubmit({ amount: parsed.value, date, categoryId, note: sanitizeText(note) || null })
+    if (!canSave || !parsed.ok) return
+    props.onSubmit({ amount: parsed.value, date, categoryId, note: sanitizeText(note) || null, cycleMonth })
   }
 
   return (
@@ -88,7 +101,17 @@ export function TxForm(props: {
         </label>
       </div>
 
-      <button className="btn primary" type="submit" disabled={!canSave && touched}>
+      {cycleMonth && (
+        <label className="field">
+          <span>หักจากเงินรอบ</span>
+          <select className="input" aria-label="หักจากเงินรอบ" value={cycleMonth} onChange={(e) => setCycleChoice({ date, month: e.target.value })}>
+            {cycleOptions.map((m) => <option key={m} value={m}>ยอดปิด {monthLabel(m)}</option>)}
+          </select>
+          <small className="muted">วันที่ใช้เงินจริงยังเป็นวันเดิม หากใช้ก่อนปิดยอดในวันนั้น ให้เลือกรอบก่อน</small>
+        </label>
+      )}
+      {!cycles.data && !cycles.loading && <button type="button" className="btn ghost" onClick={cycles.reload}>โหลดรอบเงินอีกครั้ง</button>}
+      <button className="btn primary" type="submit" disabled={!canSave}>
         <Check size={18} strokeWidth={2} />
         {props.busy ? 'กำลังบันทึก…' : props.submitLabel}
       </button>

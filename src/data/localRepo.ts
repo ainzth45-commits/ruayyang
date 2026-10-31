@@ -1,4 +1,7 @@
 import type { Repo } from './repo'
+import { cycleForDate } from '../domain/cycle'
+import { MAX_SATANG } from '../domain/money'
+import { monthEndDate } from '../domain/month'
 import type { Category, MonthEntry, MonthRecord, NewSaving, RecurringItem, Saving, Transaction, UserSettings } from '../domain/types'
 
 /** ที่เก็บรูปสลิปของ LocalRepo (เบราว์เซอร์ใช้ IndexedDB, เทสใช้ Map) */
@@ -24,6 +27,15 @@ interface State {
 }
 
 const KEY = 'ledger-local-v1'
+/** HTTP บน LAN ไม่มี randomUUID แต่ getRandomValues ยังใช้ได้บน iPhone */
+function newLocalId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
 const empty = (): State => ({ categories: [], items: [], months: [], entries: [], transactions: [], savings: [], settings: { savingsOpening: 0 } })
 const newMonth = (month: string): MonthRecord => ({ month, actualBalance: null, spendBudget: null, closedAt: null })
 
@@ -65,6 +77,12 @@ export class LocalRepo implements Repo {
     this.kv.setItem(KEY, JSON.stringify(this.s))
   }
 
+  /** Persist the candidate before publishing it in memory (quota failure leaves both unchanged). */
+  private commit(next: State) {
+    this.kv.setItem(KEY, JSON.stringify(next))
+    this.s = next
+  }
+
   private clone<T>(v: T): T {
     return structuredClone(v)
   }
@@ -74,7 +92,7 @@ export class LocalRepo implements Repo {
   }
 
   async saveCategory(c: Omit<Category, 'id'> & { id?: string }) {
-    const row: Category = { ...c, id: c.id ?? crypto.randomUUID() }
+    const row: Category = { ...c, id: c.id ?? newLocalId() }
     upsertBy(this.s.categories, row, (x) => x.id === row.id)
     this.save()
     return this.clone(row)
@@ -85,7 +103,7 @@ export class LocalRepo implements Repo {
   }
 
   async saveItem(item: Omit<RecurringItem, 'id'> & { id?: string }) {
-    const row: RecurringItem = { ...item, id: item.id ?? crypto.randomUUID() }
+    const row: RecurringItem = { ...item, id: item.id ?? newLocalId() }
     upsertBy(this.s.items, row, (x) => x.id === row.id)
     this.save()
     return this.clone(row)
@@ -122,6 +140,28 @@ export class LocalRepo implements Repo {
     this.patchMonth(month, { closedAt })
   }
 
+  async closeMonthAtomic(month: string, actual: number, save: number, nowIso: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !Number.isFinite(Date.parse(nowIso))) throw new Error('รอบเงินหรือเวลาปิดยอดไม่ถูกต้อง')
+    if (!Number.isSafeInteger(actual) || Math.abs(actual) > MAX_SATANG || !Number.isSafeInteger(save) || save < 0 || save > Math.max(actual, 0)) throw new Error('ยอดปิดหรือยอดแยกเก็บไม่ถูกต้อง')
+    const next = this.clone(this.s)
+    const record = next.months.find((m) => m.month === month)
+    if (record) {
+      // Imported snapshots with an actual balance already have an implicit opening
+      // on next month's first day. Retain null instead of moving that boundary to now.
+      const closedAt = record.actualBalance !== null ? record.closedAt : record.closedAt ?? nowIso
+      Object.assign(record, { actualBalance: actual, closedAt })
+    }
+    else next.months.push({ ...newMonth(month), actualBalance: actual, closedAt: nowIso })
+    const date = monthEndDate(month)
+    const existing = next.savings.find((s) => s.kind === 'close' && s.date === date)
+    next.savings = next.savings.filter((s) => s.kind !== 'close' || s.date !== date || (save > 0 && s.id === existing?.id))
+    if (save > 0) {
+      if (existing) existing.amount = save
+      else next.savings.push({ id: newLocalId(), date, amount: save, note: 'แยกเก็บตอนปิดเดือน', kind: 'close', createdAt: nowIso, cycleMonth: month })
+    }
+    this.commit(next)
+  }
+
   async listEntries(from: string, to: string) {
     return this.clone(this.s.entries.filter((e) => e.month >= from && e.month <= to))
   }
@@ -129,22 +169,28 @@ export class LocalRepo implements Repo {
   async insertEntriesIfAbsent(entries: Omit<MonthEntry, 'id'>[]) {
     for (const e of entries) {
       if (this.s.entries.some((x) => x.itemId === e.itemId && x.month === e.month)) continue
-      this.s.entries.push({ ...e, id: crypto.randomUUID() })
+      this.s.entries.push({ ...e, id: newLocalId() })
     }
     this.save()
   }
 
-  async updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note'>>) {
-    const row = this.s.entries.find((e) => e.id === id)
+  async updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note' | 'receiptPath'>>) {
+    const next = this.clone(this.s)
+    const row = next.entries.find((e) => e.id === id)
     if (!row) throw new Error('ไม่พบรายการนี้แล้ว')
     Object.assign(row, patch)
-    this.save()
+    this.commit(next)
   }
 
-  async deleteEntries(ids: string[]) {
+  async deleteEntries(ids: string[]): Promise<string | null> {
+    if (!ids.length) return null
     const set = new Set(ids)
-    this.s.entries = this.s.entries.filter((e) => !set.has(e.id))
-    this.save()
+    const paths = [...new Set(this.s.entries.filter((e) => set.has(e.id)).map((e) => e.receiptPath).filter((p): p is string => !!p))]
+    const next = this.clone(this.s)
+    next.entries = next.entries.filter((e) => !set.has(e.id))
+    this.commit(next)
+    const results = await Promise.allSettled(paths.map((path) => this.deleteSlip(path)))
+    return results.some((r) => r.status === 'rejected') ? 'ลบรายการแล้ว แต่ลบรูปหลักฐานบางรูปไม่สำเร็จ' : null
   }
 
   async listTransactions(from: string, to: string) {
@@ -163,17 +209,22 @@ export class LocalRepo implements Repo {
     if (t.slipHash && this.s.transactions.some((x) => x.slipHash === t.slipHash)) {
       throw new Error('สลิปนี้บันทึกไปแล้ว')
     }
-    const row: Transaction = { ...t, id: crypto.randomUUID(), createdAt: new Date().toISOString() }
-    this.s.transactions.push(row)
-    this.save()
+    const createdAt = new Date().toISOString()
+    const row: Transaction = { ...t, cycleMonth: t.cycleMonth ?? cycleForDate(t.date, this.s.months, createdAt), id: newLocalId(), createdAt }
+    const next = this.clone(this.s)
+    next.transactions.push(row)
+    this.commit(next)
     return this.clone(row)
   }
 
   async updateTransaction(id: string, patch: Partial<Omit<Transaction, 'id' | 'createdAt'>>) {
-    const row = this.s.transactions.find((t) => t.id === id)
+    const next = this.clone(this.s)
+    const row = next.transactions.find((t) => t.id === id)
     if (!row) throw new Error('ไม่พบรายการนี้แล้ว')
-    Object.assign(row, patch)
-    this.save()
+    const resolved = patch.date !== undefined && patch.date !== row.date && patch.cycleMonth === undefined
+      ? { ...patch, cycleMonth: cycleForDate(patch.date, this.s.months) } : patch
+    Object.assign(row, resolved)
+    this.commit(next)
   }
 
   async deleteTransaction(id: string) {
@@ -192,18 +243,23 @@ export class LocalRepo implements Repo {
   async addSaving(x: NewSaving) {
     checkAmount(x.amount)
     if (x.kind === 'close' && this.s.savings.some((y) => y.kind === 'close' && y.date === x.date)) throw new Error('ข้อมูลนี้มีอยู่แล้ว')
-    const row: Saving = { ...x, id: crypto.randomUUID(), createdAt: new Date().toISOString() }
-    this.s.savings.push(row)
-    this.save()
+    const createdAt = new Date().toISOString()
+    const row: Saving = { ...x, ...(x.kind === 'deposit' ? { cycleMonth: x.cycleMonth ?? cycleForDate(x.date, this.s.months, createdAt) } : {}), id: newLocalId(), createdAt }
+    const next = this.clone(this.s)
+    next.savings.push(row)
+    this.commit(next)
     return this.clone(row)
   }
 
   async updateSaving(id: string, patch: Partial<NewSaving>) {
-    const row = this.s.savings.find((x) => x.id === id)
+    const next = this.clone(this.s)
+    const row = next.savings.find((x) => x.id === id)
     if (!row) throw new Error('ไม่พบรายการนี้แล้ว')
     if (patch.amount !== undefined) checkAmount(patch.amount)
-    Object.assign(row, patch)
-    this.save()
+    const resolved = patch.date !== undefined && patch.date !== row.date && patch.cycleMonth === undefined && (patch.kind ?? row.kind) === 'deposit'
+      ? { ...patch, cycleMonth: cycleForDate(patch.date, this.s.months) } : patch
+    Object.assign(row, resolved)
+    this.commit(next)
   }
 
   async deleteSaving(id: string) {
@@ -222,7 +278,7 @@ export class LocalRepo implements Repo {
   }
 
   async uploadSlip(file: Blob, month: string) {
-    const path = `local/${month}/${crypto.randomUUID()}.jpg`
+    const path = `local/${month}/${newLocalId()}.jpg`
     await this.slips.put(path, file)
     return path
   }

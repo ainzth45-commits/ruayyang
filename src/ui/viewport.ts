@@ -22,7 +22,22 @@ export function computeViewport(layoutHeight: number, vvHeight: number, vvOffset
   return { vvh, vvt, kb: Math.max(0, Math.round(layoutHeight - vvHeight - vvOffsetTop)), open: layoutHeight - vvHeight > KB_MIN }
 }
 
-const SCROLLABLE = '.scroller, .sheet, .login, .chips'
+const SCROLLABLE = '.scroller, .sheet-body, .login, .chips'
+
+/** Reveal a field/picker in its own scroll area without asking Safari to scroll the page. */
+export function revealInScroller(target: HTMLElement): void {
+  const scroller = target.closest<HTMLElement>('.sheet-body, .scroller, .login')
+  if (!scroller) return
+  const frame = scroller.getBoundingClientRect()
+  const field = target.getBoundingClientRect()
+  if (frame.height <= 0 || field.height <= 0) return
+  const gap = 16
+  let top = scroller.scrollTop
+  if (field.height > frame.height - gap * 2 || field.top < frame.top + gap) top += field.top - frame.top - gap
+  else if (field.bottom > frame.bottom - gap) top += field.bottom - frame.bottom + gap
+  top = Math.max(0, top)
+  if (top !== scroller.scrollTop) scroller.scrollTo({ top, behavior: 'auto' })
+}
 
 let installed = false
 
@@ -38,13 +53,14 @@ export function installViewport(): void {
   const typing = () => !!(document.activeElement as Element | null)?.matches?.('input, textarea, select, [contenteditable]')
   const layoutHeight = () => {
     const h = Math.max(document.documentElement.clientHeight, window.innerHeight)
-    if (!typing() || baseH === 0) baseH = h
+    // blur มาก่อน animation ปิดแป้นจบ: ยังห้ามจำความสูงที่หดเป็น baseline ใหม่
+    const recovered = (vv?.height ?? h) >= baseH - KB_MIN
+    if (baseH === 0 || h > baseH || (!typing() && recovered)) baseH = h
     return Math.max(baseH, h)
   }
 
   const apply = () => {
-    if (!vv) return
-    const v = computeViewport(layoutHeight(), vv.height, vv.offsetTop)
+    const v = computeViewport(layoutHeight(), vv?.height ?? window.innerHeight, vv?.offsetTop ?? 0)
     root.style.setProperty('--vvh', `${v.vvh}px`)
     root.style.setProperty('--vvt', `${v.vvt}px`)
     root.style.setProperty('--kb', `${v.kb}px`)
@@ -53,6 +69,8 @@ export function installViewport(): void {
   vv?.addEventListener('resize', apply)
   vv?.addEventListener('scroll', apply)
   window.addEventListener('orientationchange', () => { baseH = 0; window.setTimeout(apply, 300) })
+  window.addEventListener('resize', apply)
+  document.addEventListener('focusin', apply)
   document.addEventListener('focusout', () => window.setTimeout(apply, 50))
   apply()
 

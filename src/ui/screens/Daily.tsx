@@ -4,6 +4,7 @@ import { formatBaht } from '../../domain/money'
 import { bangkokToday, dateLabel, daysInMonth, monthOf, WEEKDAYS_SHORT } from '../../domain/month'
 import type { MonthKey, Transaction } from '../../domain/types'
 import { Money } from '../components/Money'
+import { FixedCalendar } from '../components/FixedCalendar'
 import { MonthSwitcher } from '../components/MonthSwitcher'
 import { PageHeader } from '../components/PageHeader'
 import { TxEditSheet } from '../components/TxEditSheet'
@@ -20,31 +21,42 @@ export function Daily() {
   const [month, setMonth] = useState<MonthKey>(monthOf(today))
   const [selected, setSelected] = useState<string | null>(today)
   const [editing, setEditing] = useState<Transaction | null>(null)
-  const { data } = useLoad(() => loadMonth(repo, month), [month])
+  const [mode, setMode] = useState<'daily' | 'fixed'>('daily')
+  const { data, loading, reload } = useLoad(() => loadMonth(repo, month), [month])
+  const current = data?.month === month ? data : null
 
   const changeMonth = (m: MonthKey) => {
     setMonth(m)
     setSelected(m === monthOf(today) ? today : null)
   }
 
-  const txs = data?.txs ?? []
+  const txs = current?.txs ?? []
   const totals = dailyTotals(txs)
   const max = Math.max(1, ...totals.values())
   const [y, m] = month.split('-').map(Number)
   const firstWd = new Date(Date.UTC(y, m - 1, 1)).getUTCDay()
   const days = daysInMonth(month)
-  const catById = new Map((data?.categories ?? []).map((c) => [c.id, c]))
+  const catById = new Map((current?.categories ?? []).map((c) => [c.id, c]))
   const dayTxs = selected ? txs.filter((t) => t.date === selected) : txs
   const breakdown = categoryBreakdown(txs)
   const total = txs.reduce((a, t) => a + t.amount, 0)
 
   return (
     <div className="page">
-      <PageHeader eyebrow="02 — Daily" title="รายวัน" sub="แตะวันที่เพื่อดูรายการ" right={<MonthSwitcher month={month} onChange={changeMonth} />} />
-      <div className="boxes" style={{ marginBottom: 16 }}>
+      <PageHeader eyebrow="02 — Calendar" title="ปฏิทิน" sub={mode === 'daily' ? 'ใช้จ่ายวันไหน เท่าไร' : 'บิลและหลักฐานจ่ายประจำแต่ละเดือน'} right={<MonthSwitcher month={month} onChange={changeMonth} />} />
+      <div className="calendar-modes" role="group" aria-label="ประเภทค่าใช้จ่าย">
+        <button type="button" aria-pressed={mode === 'daily'} onClick={() => setMode('daily')}>ใช้จ่ายรายวัน</button>
+        <button type="button" aria-pressed={mode === 'fixed'} onClick={() => setMode('fixed')}>จ่ายประจำ</button>
+      </div>
+      {!current ? <div className="empty" role="status">
+        {loading ? 'กำลังโหลด…' : <><p>โหลดข้อมูลไม่สำเร็จ</p><button type="button" className="btn ghost" onClick={reload}>ลองใหม่</button></>}
+      </div> : mode === 'fixed' ? (
+        <FixedCalendar key={month} month={month} entries={current.entries} items={current.items} />
+      ) : <>
+      <section className="boxes" aria-label="สรุปใช้จ่ายรายวัน" style={{ marginBottom: 16 }}>
         <div className="box"><div className="l">ใช้ไปทั้งเดือน</div><div className="v gold">{formatBaht(total)}</div></div>
         <div className="box"><div className="l">เฉลี่ยต่อวันที่ใช้</div><div className="v">{formatBaht(totals.size ? Math.round(total / totals.size) : 0)}</div></div>
-      </div>
+      </section>
 
       <div className="cal" role="grid" aria-label="ปฏิทินรายจ่าย">
         {WEEKDAYS_SHORT.map((w) => <div key={w} className="wd">{w}</div>)}
@@ -115,8 +127,9 @@ export function Daily() {
           </div>
         </div>
       )}
+      </>}
 
-      {editing && <TxEditSheet tx={editing} categories={data?.categories ?? []} onClose={() => setEditing(null)} />}
+      {editing && <TxEditSheet tx={editing} categories={current?.categories ?? []} onClose={() => setEditing(null)} />}
     </div>
   )
 }

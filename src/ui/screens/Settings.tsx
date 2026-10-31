@@ -1,3 +1,4 @@
+import { version } from '../../../package.json'
 import { useState } from 'react'
 import { ChevronDown, Download, LogOut, PiggyBank, Plus, RotateCcw } from 'lucide-react'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
@@ -135,7 +136,7 @@ export function Settings() {
           </button>
         )}
         <p className="muted" style={{ fontSize: 12, textAlign: 'center', marginTop: 18 }}>
-          รวยยัง? · {isLocalMode ? 'โหมดตัวอย่าง (เก็บในเครื่องนี้)' : 'เชื่อมต่อ Supabase'}
+          รวยยัง? · v{version} · {isLocalMode ? 'โหมดตัวอย่าง (เก็บในเครื่องนี้)' : 'เชื่อมต่อ Supabase'}
         </p>
       </div>
 
@@ -179,7 +180,7 @@ function CategorySheet({ cat, count, onClose }: { cat: Category | null; count: n
 }
 
 function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count: number; onClose: () => void }) {
-  const { repo } = useApp()
+  const { repo, toast } = useApp()
   const { busy, run } = useAction()
   const thisMonth = monthOf(bangkokToday())
   const [name, setName] = useState(item?.name ?? '')
@@ -241,24 +242,28 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
               label={`เลิกรายการนี้ตั้งแต่ ${monthLabel(thisMonth)}`}
               confirmLabel="แตะอีกครั้งเพื่อยืนยัน (ย้ายไปรายการที่จบแล้ว)"
               disabled={busy}
-              onConfirm={() =>
-                run(async () => {
-                  await stopItem(repo, item, thisMonth)
+              onConfirm={async () => {
+                const warning = await run(async () => {
+                  const warning = await stopItem(repo, item, thisMonth)
                   onClose()
+                  return warning
                 }, 'เลิกรายการแล้ว', 'delete')
-              }
+                if (warning) toast(warning, 'error')
+              }}
             />
           )}
           <ConfirmButton
             label="ลบรายการนี้"
             confirmLabel="แตะอีกครั้งเพื่อลบ (เดือนที่จ่ายแล้วเก็บเป็นประวัติ)"
             disabled={busy}
-            onConfirm={() =>
-              run(async () => {
-                await removeItem(repo, item, thisMonth)
+            onConfirm={async () => {
+              const warning = await run(async () => {
+                const warning = await removeItem(repo, item, thisMonth)
                 onClose()
+                return warning
               }, `ลบ ${item.name} แล้ว`, 'delete')
-            }
+              if (warning) toast(warning, 'error')
+            }}
           />
           <p className="muted" style={{ fontSize: 12, margin: '2px 4px 0' }}>
             ทั้งสองแบบ: เดือน {monthLabel(thisMonth)} เป็นต้นไปที่ยังไม่จ่ายจะหายไป · เดือนก่อนหน้าไม่เปลี่ยน

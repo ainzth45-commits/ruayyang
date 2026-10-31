@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react'
 import { addDays, addMonths, bangkokToday, daysInMonth, monthLabel, monthOf, WEEKDAYS_SHORT } from '../../domain/month'
 import type { DateKey, MonthKey } from '../../domain/types'
+import { revealInScroller } from '../viewport'
 
 // ปฏิทินของแอปเอง (แทน date/month picker ของเบราว์เซอร์ที่หน้าตาไม่เข้าธีม)
 // เปิดเป็นแผงกางในฟอร์ม เปิดได้ทีละอัน · ใช้ใน .two ได้ (แผงกินเต็มแถว)
@@ -13,8 +14,15 @@ function useRevealOnOpen(open: boolean): RefObject<HTMLDivElement | null> {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
-    const t = window.setTimeout(() => ref.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }), 60)
-    return () => window.clearTimeout(t)
+    let timer = 0
+    const reveal = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => { if (ref.current) revealInScroller(ref.current) }, 60)
+    }
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', reveal)
+    reveal()
+    return () => { window.clearTimeout(timer); vv?.removeEventListener('resize', reveal) }
   }, [open])
   return ref
 }

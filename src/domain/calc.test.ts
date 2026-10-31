@@ -99,3 +99,39 @@ describe('entryStatus', () => {
     expect(entryStatus(entry('x', '2026-10', 1), item('x', 'expense'))).toBe('pending')
   })
 })
+
+describe('cash cycle boundaries', () => {
+  const records = [
+    { month: '2026-09', actualBalance: 100_000, spendBudget: null, closedAt: '2026-09-30T02:00:00Z' },
+    { month: '2026-10', actualBalance: 777_707, spendBudget: null, closedAt: '2026-10-31T02:19:00Z' },
+    { month: '2026-11', actualBalance: 800_000, spendBudget: null, closedAt: '2026-11-30T02:00:00Z' },
+  ]
+  const transactions = [
+    { ...tx('2026-10-31', 5_000), createdAt: '2026-10-31T02:18:00Z' },
+    { ...tx('2026-10-31', 10_000), createdAt: '2026-10-31T02:20:00Z' },
+    { ...tx('2026-11-01', 20_000), createdAt: '2026-11-01T03:00:00Z' },
+    { ...tx('2026-11-30', 30_000), createdAt: '2026-11-30T02:01:00Z' },
+  ]
+
+  it('deducts after-close spending immediately and keeps calendar totals on their actual date', () => {
+    const october = summarizeMonth('2026-10', [], [], transactions, records[1], [], records)
+    const september = summarizeMonth('2026-09', [], [], transactions, records[0], [], records)
+    expect(october.daily).toBe(30_000)
+    expect(october.left).toBe(747_707)
+    expect(september.daily).toBe(5_000)
+    expect(dailyTotals(transactions).get('2026-10-31')).toBe(15_000)
+  })
+
+  it('deducts deposits from the same opened cycle and honors explicit cycle assignments', () => {
+    const october = summarizeMonth('2026-10', [], [], [
+      { ...tx('2026-10-31', 100), createdAt: '', cycleMonth: '2026-10' },
+    ], records[1], [
+      { id: 'before', date: '2026-10-31', amount: 1_000, kind: 'deposit', note: null, createdAt: '2026-10-31T02:18:00Z' },
+      { id: 'after', date: '2026-10-31', amount: 2_000, kind: 'deposit', note: null, createdAt: '2026-10-31T02:20:00Z' },
+      { id: 'explicit', date: '2026-10-30', amount: 3_000, kind: 'deposit', note: null, createdAt: '', cycleMonth: '2026-10' },
+    ], records)
+    expect(october.daily).toBe(100)
+    expect(october.savedDeposits).toBe(5_000)
+    expect(october.left).toBe(772_607)
+  })
+})

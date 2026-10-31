@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { LocalRepo, memoryKV, memorySlipStore } from '../data/localRepo'
+import type { Repo } from '../data/repo'
 import { closeMonth, isMonthClosed, needsClosing, savedIn, savingsTotal } from './savings'
 import type { SavingKind } from './types'
 
@@ -48,6 +49,7 @@ describe('closeMonth', () => {
     await closeMonth(repo, '2026-10', 460_000, 100_000, '2026-11-01T00:00:00Z')
     expect((await close()).map((x) => x.amount)).toEqual([100_000])
     expect((await repo.listMonths('2026-10', '2026-10'))[0].actualBalance).toBe(460_000)
+    expect((await repo.listMonths('2026-10', '2026-10'))[0].closedAt).toBe('2026-10-31T12:00:00Z')
 
     await closeMonth(repo, '2026-10', 460_000, 0, '2026-11-01T00:00:00Z')
     expect(await close()).toEqual([])
@@ -56,8 +58,26 @@ describe('closeMonth', () => {
   })
   it('rejects negative save; negative actual balance is allowed', async () => {
     const repo = new LocalRepo(memoryKV(), memorySlipStore())
-    await expect(closeMonth(repo, '2026-10', 1, -1, 'x')).rejects.toThrow()
-    await closeMonth(repo, '2026-10', -20_000, 0, 'x')
+    await expect(closeMonth(repo, '2026-10', 1, -1, '2026-10-31T12:00:00Z')).rejects.toThrow()
+    await closeMonth(repo, '2026-10', -20_000, 0, '2026-10-31T12:00:00Z')
     expect((await repo.listMonths('2026-10', '2026-10'))[0].actualBalance).toBe(-20_000)
+  })
+
+  it('rejects dirty balances, invalid times and savings greater than available before writing', async () => {
+    const closeMonthAtomic = vi.fn()
+    const repo = { closeMonthAtomic } as unknown as Repo
+    await expect(closeMonth(repo, '2026-10', NaN, 0, '2026-10-31T12:00:00Z')).rejects.toThrow(/คงเหลือ/)
+    await expect(closeMonth(repo, '2026-10', 1.5, 0, '2026-10-31T12:00:00Z')).rejects.toThrow(/คงเหลือ/)
+    await expect(closeMonth(repo, '2026-10', 10, 11, '2026-10-31T12:00:00Z')).rejects.toThrow(/แยกเก็บ/)
+    await expect(closeMonth(repo, '2026-10', -10, 1, '2026-10-31T12:00:00Z')).rejects.toThrow(/แยกเก็บ/)
+    await expect(closeMonth(repo, '2026-10', 10, 0, 'invalid')).rejects.toThrow(/เวลา/)
+    expect(closeMonthAtomic).not.toHaveBeenCalled()
+  })
+
+  it('delegates one atomic operation and reports a backend failure to its caller', async () => {
+    const closeMonthAtomic = vi.fn().mockRejectedValue(new Error('connection lost'))
+    const repo = { closeMonthAtomic } as unknown as Repo
+    await expect(closeMonth(repo, '2026-10', 777_707, 0, '2026-10-31T02:19:00Z')).rejects.toThrow('connection lost')
+    expect(closeMonthAtomic).toHaveBeenCalledExactlyOnceWith('2026-10', 777_707, 0, '2026-10-31T02:19:00Z')
   })
 })

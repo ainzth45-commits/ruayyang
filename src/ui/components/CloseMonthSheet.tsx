@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { ArrowLeft, ArrowRight, Check, PiggyBank } from 'lucide-react'
 import { entryStatus } from '../../domain/calc'
 import { formatBaht, parseMoneyInput } from '../../domain/money'
-import { monthLabel } from '../../domain/month'
-import { closeMonth } from '../../domain/savings'
+import { bangkokToday, monthLabel, monthOf } from '../../domain/month'
+import { closeMonth, isMonthClosed } from '../../domain/savings'
 import type { MonthEntry, MonthKey, RecurringItem } from '../../domain/types'
 import { moneyInputProps } from '../inputs'
 import { loadMonth } from '../monthData'
@@ -24,12 +24,13 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
   const [negative, setNegative] = useState<boolean | null>(null)
   const [saveText, setSaveText] = useState<string | null>(null)
 
-  if (!data) return <Sheet title={`ปิดเดือน ${monthLabel(month)}`} onClose={onClose}><div className="empty">กำลังโหลด…</div></Sheet>
+  if (!data) return <Sheet title={`ปิดยอด ${monthLabel(month)}`} onClose={onClose}><div className="empty">กำลังโหลด…</div></Sheet>
 
   const s = data.summary
+  const editing = isMonthClosed(data.record ?? undefined)
   const itemById = new Map(data.items.map((i) => [i.id, i]))
   const open = data.entries
-    .filter((e) => !e.paid)
+    .filter((e) => !e.paid && itemById.get(e.itemId)?.kind !== 'income')
     .sort((a, b) => (itemById.get(a.itemId)?.sort ?? 999) - (itemById.get(b.itemId)?.sort ?? 999))
 
   // ค่าเริ่มต้นจากที่บันทึกไว้แล้ว (แก้การปิดเดือน)
@@ -45,18 +46,20 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
   const saveStr = saveText ?? formatBaht(saveDefault)
   const save = parseMoneyInput(saveStr, { allowZero: true })
 
-  const canNext = step === 1 ? actual !== null : step === 3 ? save.ok : true
+  const saveFits = save.ok && actual !== null && save.value <= Math.max(0, actual)
+  const canNext = !busy && month <= monthOf(bangkokToday()) && (step === 0 ? open.length === 0 : step === 1 ? actual !== null : step === 3 ? saveFits : true)
 
   const finish = () =>
     actual !== null &&
     save.ok &&
+    saveFits &&
     run(async () => {
       await closeMonth(repo, month, actual, save.value, new Date().toISOString())
       onClose()
-    }, save.value > 0 ? `ปิดเดือนแล้ว · แยกเก็บ ${formatBaht(save.value)} บาท` : 'ปิดเดือนแล้ว', 'kaching')
+    }, editing ? 'แก้ยอดปิดแล้ว' : save.value > 0 ? `เริ่มเงินรอบใหม่แล้ว · แยกเก็บ ${formatBaht(save.value)} บาท` : 'เริ่มเงินรอบใหม่แล้ว', 'kaching')
 
   return (
-    <Sheet title={`ปิดเดือน ${monthLabel(month)}`} onClose={onClose}>
+    <Sheet title={`${editing ? 'แก้ยอดปิด' : 'ปิดยอด'} ${monthLabel(month)}`} onClose={onClose}>
       <div className="steps" aria-label={`ขั้นที่ ${step + 1} จาก ${STEPS.length}`}>
         {STEPS.map((label, i) => (
           <div key={label} className={`step-dot ${i === step ? 'on' : i < step ? 'done' : ''}`}>
@@ -83,7 +86,7 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
 
       {step === 1 && (
         <>
-          <p className="muted step-lead">เงินในบัญชีหลังรับเงินเดือนและจ่ายบิลครบแล้ว (ก่อนแยกเก็บ) = เงินตั้งต้นใช้ {monthLabel(s.spendMonth)}</p>
+          <p className="muted step-lead">{editing ? 'แก้ยอดตั้งต้น ณ เวลาเปิดรอบเดิม ก่อนแยกเก็บ ไม่ใช่ยอดคงเหลือปัจจุบัน รายจ่ายหลังเปิดรอบจะยังถูกหักตามเดิม' : 'ยอดเงินจริงที่พร้อมใช้หลังรับเงินเดือนและจ่ายบิล (รวมเงินเก่าที่เหลือแล้ว ก่อนแยกเก็บ) ระบบจะใช้ยอดนี้ทันที ไม่บวกเงินเก่าซ้ำ'}</p>
           <div className={`amount-box ${balStr && !bal.ok ? 'err' : ''}`}>
             <label htmlFor="close-balance">คงเหลือจริง (บาท)</label>
             <div className="amount-row">
@@ -103,7 +106,7 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
         <div className="panel" style={{ padding: '8px 20px' }}>
           <div className="ledger-line"><span>รายรับ</span><Money v={s.income} /></div>
           <div className="ledger-line"><span>จ่ายประจำ</span><Money v={-s.fixedExpense} /></div>
-          <div className="ledger-line"><span>แผนเหลือไว้ใช้ {monthLabel(s.spendMonth)}</span><Money v={planLeft} /></div>
+          <div className="ledger-line"><span>แผนเงินพร้อมใช้รอบใหม่</span><Money v={planLeft} /></div>
           <div className="ledger-line"><span>คงเหลือจริง</span><Money v={actual} /></div>
           <div className="ledger-line total">
             <span>เงินเกินแผน</span>
@@ -117,7 +120,7 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
 
       {step === 3 && (
         <>
-          <p className="muted step-lead">ย้ายไปเก็บเท่าไหร่ ที่เหลือคือเงินใช้ {monthLabel(s.spendMonth)}</p>
+          <p className="muted step-lead">ย้ายไปเก็บเท่าไหร่ ที่เหลือคือเงินพร้อมใช้รอบใหม่ทันที</p>
           <div className={`amount-box holo ${save.ok ? '' : 'err'}`}>
             <label htmlFor="close-save">แยกเก็บ (บาท)</label>
             <div className="amount-row">
@@ -135,13 +138,14 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
           )}
           {actual !== null && save.ok && (
             <div className="ledger-line total" style={{ borderBottom: 0 }}>
-              <span>เหลือไว้ใช้ {monthLabel(s.spendMonth)}</span>
+              <span>เงินพร้อมใช้รอบใหม่</span>
               <Money v={actual - save.value} className={actual - save.value < 0 ? 'neg' : 'pos'} />
             </div>
           )}
         </>
       )}
 
+      {step === 3 && save.ok && !saveFits && <p className="err-text">ยอดแยกเก็บต้องไม่เกินเงินคงเหลือจริง</p>}
       <div className="step-nav">
         {step > 0 && (
           <button type="button" className="btn ghost" onClick={() => setStep(step - 1)} disabled={busy}>
@@ -154,7 +158,7 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
           </button>
         ) : (
           <button type="button" className="btn primary" disabled={!canNext || busy} onClick={finish}>
-            <Check size={18} strokeWidth={2} /> {busy ? 'กำลังบันทึก…' : 'ปิดเดือน'}
+            <Check size={18} strokeWidth={2} /> {busy ? 'กำลังบันทึก…' : editing ? 'บันทึกแก้ยอดปิด' : 'ปิดยอดและเริ่มรอบใหม่'}
           </button>
         )}
       </div>

@@ -97,7 +97,7 @@ function Shell({ backend }: { backend: Backend }) {
       <nav className="tabbar" aria-label="เมนู">
         <div className="tabbar-inner">
           <TabButton icon={<House size={22} strokeWidth={1.5} />} label="หน้าหลัก" active={tab === 'home'} onClick={() => go('home')} />
-          <TabButton icon={<CalendarDays size={22} strokeWidth={1.5} />} label="รายวัน" active={tab === 'daily'} onClick={() => go('daily')} />
+          <TabButton icon={<CalendarDays size={22} strokeWidth={1.5} />} label="ปฏิทิน" active={tab === 'daily'} onClick={() => go('daily')} />
           <button className="fab" aria-label="เพิ่มรายจ่าย" onClick={() => { primeKeyboard(); play('pop'); setAdding(true) }}>
             <Plus size={26} strokeWidth={1.8} />
           </button>
