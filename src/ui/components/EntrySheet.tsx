@@ -107,4 +107,3 @@ export function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: 
     </Sheet>
   )
 }
-
