@@ -3,15 +3,15 @@ import { CalendarCheck, Plus, TableProperties } from 'lucide-react'
 import { entryStatus, summarizeMonth } from '../../domain/calc'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
 import { addMonths, bangkokToday, monthEndDate, monthLabel, monthOf, monthStartDate } from '../../domain/month'
-import { addItemToExistingMonths, applyDefaultToFuture, ensureMonths } from '../../domain/plan'
+import { addItemToExistingMonths, ensureMonths } from '../../domain/plan'
 import { isMonthClosed } from '../../domain/savings'
 import type { ItemKind, MonthEntry, MonthKey, RecurringItem } from '../../domain/types'
 import { Money } from '../components/Money'
 import { MonthSwitcher } from '../components/MonthSwitcher'
 import { PageHeader } from '../components/PageHeader'
-import { ReceiptAttachment } from '../components/ReceiptAttachment'
+import { EntrySheet } from '../components/EntrySheet'
 import { CloseMonthSheet } from '../components/CloseMonthSheet'
-import { ConfirmButton, Sheet } from '../components/Sheet'
+import { Sheet } from '../components/Sheet'
 import { blurOnEnter, moneyInputProps, textInputProps } from '../inputs'
 import { loadMonth } from '../monthData'
 import { useAction, useApp, useLoad } from '../store'
@@ -105,82 +105,11 @@ export function Plan({ month, onMonth }: { month: MonthKey; onMonth: (m: MonthKe
         <Plus size={18} strokeWidth={1.6} /> เพิ่มรายการในเดือนนี้
       </button>
 
-      {editing && <EntrySheet entry={editing} item={itemById.get(editing.itemId)} onClose={() => setEditing(null)} />}
+      {editing && <EntrySheet key={editing.id} entry={editing} item={itemById.get(editing.itemId)} onClose={() => setEditing(null)} />}
       {adding && <AddEntrySheet month={month} items={data.items} existing={data.entries} onClose={() => setAdding(false)} />}
       {closing && <CloseMonthSheet month={month} onClose={() => setClosing(false)} />}
       {year && <YearSheet current={month} onPick={(m) => { onMonth(m); setYear(false) }} onClose={() => setYear(false)} />}
     </div>
-  )
-}
-
-function EntrySheet({ entry, item, onClose }: { entry: MonthEntry; item: RecurringItem | undefined; onClose: () => void }) {
-  const { repo, toast } = useApp()
-  const { busy, run } = useAction()
-  const [amount, setAmount] = useState(formatBaht(entry.amount))
-  const [paid, setPaid] = useState(entry.paid)
-  const [note, setNote] = useState(entry.note ?? '')
-  const p = parseMoneyInput(amount, { allowZero: true })
-  const isIncome = item?.kind === 'income'
-  const changed = p.ok && p.value !== entry.amount
-  const [carry, setCarry] = useState(false)
-  return (
-    <Sheet title={item?.name ?? 'รายการ'} onClose={onClose}>
-      <div className="muted" style={{ marginTop: -10, marginBottom: 14, fontSize: 13.5 }}>
-        {monthLabel(entry.month)}{item?.isEstimate ? ' · ยอดประมาณ' : ''}
-      </div>
-      <div className={`amount-box ${p.ok ? '' : 'err'}`}>
-        <label>ยอด (บาท)</label>
-        <div className="amount-row">
-          <span className="cur">฿</span>
-          <input className="amount-input" {...moneyInputProps} aria-label="ยอด" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </div>
-      </div>
-      {!p.ok && <div className="err-text" style={{ marginTop: -10, marginBottom: 12 }}>{p.error}</div>}
-      <div className="switch">
-        <span>{isIncome ? 'ได้รับแล้ว' : 'จ่ายแล้ว'}{item?.isEstimate && !isIncome && <span className="muted" style={{ fontSize: 12 }}> — แก้เป็นยอดจริงก่อนติ๊ก</span>}</span>
-        <button className="toggle" role="switch" aria-checked={paid} aria-label="จ่ายแล้ว" onClick={() => setPaid(!paid)} />
-      </div>
-      {changed && item && (
-        <div className="switch">
-          <span>ใช้ยอดนี้กับเดือนถัดไปด้วย<br /><span className="muted" style={{ fontSize: 12 }}>{carry ? `ทุกเดือนหลัง ${monthLabel(entry.month)} ที่ยังไม่จ่าย` : 'ปิด = เปลี่ยนแค่เดือนนี้'}</span></span>
-          <button className="toggle" role="switch" aria-checked={carry} aria-label="ใช้ยอดนี้กับเดือนถัดไปด้วย" onClick={() => setCarry(!carry)} />
-        </div>
-      )}
-      {!isIncome && <ReceiptAttachment entry={entry} />}
-      <label className="field" style={{ marginTop: 14 }}>
-        <span>โน้ต</span>
-        <input className="input" {...textInputProps} onKeyDown={blurOnEnter} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
-      </label>
-      <button
-        className="btn primary"
-        disabled={!p.ok || busy}
-        onClick={() =>
-          p.ok &&
-          run(async () => {
-            await repo.updateEntry(entry.id, { amount: p.value, paid, note: sanitizeText(note) || null })
-            if (changed && carry && item) await applyDefaultToFuture(repo, item, p.value, addMonths(entry.month, 1))
-            onClose()
-          }, paid && !entry.paid ? (isIncome ? 'รับเงินแล้ว' : 'จ่ายแล้ว') : 'บันทึกแล้ว', paid && !entry.paid ? 'kaching' : 'save')
-        }
-      >
-        บันทึก
-      </button>
-      <div style={{ marginTop: 10 }}>
-        <ConfirmButton
-          label="เอาออกจากเดือนนี้"
-          confirmLabel="แตะอีกครั้งเพื่อยืนยัน"
-          disabled={busy}
-          onConfirm={async () => {
-            const warning = await run(async () => {
-              const warning = await repo.deleteEntries([entry.id])
-              onClose()
-              return warning
-            }, 'เอาออกแล้ว', 'delete')
-            if (warning) toast(warning, 'error')
-          }}
-        />
-      </div>
-    </Sheet>
   )
 }
 

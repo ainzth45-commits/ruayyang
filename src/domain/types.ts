@@ -27,6 +27,14 @@ export interface RecurringItem {
   archived: boolean
 }
 
+export type ReceiptCheckMode = 'sum' | 'each'
+
+export interface ReceiptEvidence {
+  path: string
+  /** ยอดที่อ่านจากรูป เป็นสตางค์; null = ยังอ่านไม่ได้ */
+  ocrAmount: Satang | null
+}
+
 export interface MonthEntry {
   id: string
   itemId: string
@@ -35,6 +43,9 @@ export interface MonthEntry {
   paid: boolean
   note: string | null
   receiptPath?: string | null
+  receipts?: ReceiptEvidence[] | null
+  receiptRevision?: number
+  receiptMode?: ReceiptCheckMode | null
 }
 
 export interface MonthRecord {

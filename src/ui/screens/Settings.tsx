@@ -1,12 +1,14 @@
 import { version } from '../../../package.json'
 import { useState } from 'react'
-import { ChevronDown, Download, LogOut, PiggyBank, Plus, RotateCcw } from 'lucide-react'
+import { ChevronDown, Download, LogOut, PiggyBank, Plus, RotateCcw, TableProperties } from 'lucide-react'
 import { formatBaht, parseMoneyInput, sanitizeText } from '../../domain/money'
 import { bangkokToday, monthLabel, monthOf } from '../../domain/month'
 import { addItemToExistingMonths, applyDefaultToFuture, removeItem, stopItem } from '../../domain/plan'
-import type { Category, ItemKind, RecurringItem } from '../../domain/types'
+import type { Category, ItemKind, MonthEntry, RecurringItem } from '../../domain/types'
 import { isLocalMode } from '../../data'
 import { Money } from '../components/Money'
+import { EntrySheet } from '../components/EntrySheet'
+import { ItemMonthlySheet } from '../components/ItemMonthlySheet'
 import { ConfirmButton, Sheet } from '../components/Sheet'
 import { PageHeader } from '../components/PageHeader'
 import { MonthField } from '../components/Pickers'
@@ -190,6 +192,8 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
   const [start, setStart] = useState(item?.startMonth ?? thisMonth)
   const [end, setEnd] = useState(item?.endMonth ?? '')
   const [applyFuture, setApplyFuture] = useState(true)
+  const [history, setHistory] = useState(false)
+  const [monthlyEntry, setMonthlyEntry] = useState<MonthEntry | null>(null)
   const p = parseMoneyInput(amount, { allowZero: true })
   const clean = sanitizeText(name, 80)
   const monthOk = /^\d{4}-\d{2}$/.test(start) && (end === '' || (/^\d{4}-\d{2}$/.test(end) && end >= start))
@@ -208,8 +212,12 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
       onClose()
     }, 'บันทึกแล้ว', 'save')
 
+  if (item && monthlyEntry) return <EntrySheet key={monthlyEntry.id} entry={monthlyEntry} item={item} onClose={() => setMonthlyEntry(null)} />
+  if (item && history) return <ItemMonthlySheet item={item} currentMonth={thisMonth} onSelect={setMonthlyEntry} onClose={() => setHistory(false)} />
+
   return (
     <Sheet title={item ? 'แก้ไขรายการประจำ' : 'เพิ่มรายการประจำ'} onClose={onClose}>
+      {item && <button type="button" className="btn ghost" style={{ marginBottom: 14 }} onClick={() => setHistory(true)}><TableProperties size={18} /> ยอดรายการนี้แต่ละเดือน</button>}
       <div className="seg">
         <button aria-pressed={kind === 'expense'} onClick={() => setKind('expense')}>รายจ่าย</button>
         <button aria-pressed={kind === 'income'} onClick={() => setKind('income')}>รายรับ</button>
@@ -233,7 +241,7 @@ function ItemSheet({ item, count, onClose }: { item: RecurringItem | null; count
         <MonthField label="เดือนเริ่ม" value={start} onChange={(m) => m && setStart(m)} />
         <MonthField label="เดือนสุดท้าย" value={end} onChange={setEnd} emptyLabel="ไม่มีกำหนด" min={start} invalid={!monthOk} />
       </div>
-      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>{item ? 'แก้ยอด/ช่วงเดือนแล้ว เดือนที่มีอยู่ไม่เปลี่ยนตาม — แก้รายเดือนได้ในหน้าแผนเดือน' : 'รายการใหม่จะลงทุกเดือนตั้งแต่เดือนเริ่ม (รวมเดือนที่มีอยู่แล้ว)'}</p>
+      <p className="muted" style={{ fontSize: 12, marginTop: -4 }}>{item ? 'แก้เฉพาะเดือนได้ใน “ยอดรายการนี้แต่ละเดือน” · หากเปลี่ยนยอดตั้งต้น เลือกได้ว่าจะใช้กับเดือนที่ยังไม่จ่ายด้วยหรือไม่' : 'รายการใหม่จะลงทุกเดือนตั้งแต่เดือนเริ่ม (รวมเดือนที่มีอยู่แล้ว)'}</p>
       <button className="btn primary" disabled={!clean || !p.ok || !monthOk || busy} onClick={save}>บันทึก</button>
       {item && (
         <div className="item-actions">

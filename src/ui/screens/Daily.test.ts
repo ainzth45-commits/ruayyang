@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it } from 'vitest'
 import { LocalRepo, memoryKV, memorySlipStore } from '../../data/localRepo'
 import type { Auth } from '../../data/repo'
-import { addMonths, bangkokToday, monthOf } from '../../domain/month'
+import { addMonths, bangkokToday, dateLabel, monthOf } from '../../domain/month'
 import { AppProvider } from '../store'
 import { Daily } from './Daily'
 
@@ -41,6 +41,29 @@ async function openCalendar() {
 }
 
 describe('ปฏิทินแยกรายวันและจ่ายประจำ', () => {
+  it('shows the viewed date amount, zero for an empty date, and a prompt when no date is selected', async () => {
+    await openCalendar()
+    const today = bangkokToday()
+    const emptyDate = `${monthOf(today)}-${today.endsWith('-01') ? '02' : '01'}`
+    const summary = screen.getByRole('region', { name: 'สรุปใช้จ่ายรายวัน' })
+    const viewed = within(summary).getByText('ยอดวันที่ดู').parentElement as HTMLElement
+    const monthly = within(summary).getByText('ใช้ไปทั้งเดือน').parentElement as HTMLElement
+    expect(within(viewed).getByText('100.00')).toBeTruthy()
+    expect(within(viewed).getByText(dateLabel(today))).toBeTruthy()
+
+    const emptyDay = screen.getByRole('button', { name: `${dateLabel(emptyDate)} 0.00 บาท` })
+    fireEvent.click(emptyDay)
+    expect(within(viewed).getByText('0.00')).toBeTruthy()
+    expect(within(viewed).getByText(dateLabel(emptyDate))).toBeTruthy()
+    expect(within(monthly).getByText('100.00')).toBeTruthy()
+
+    fireEvent.click(emptyDay)
+    expect(within(viewed).getByText('—')).toBeTruthy()
+    expect(within(viewed).getByText('แตะเลือกวันในปฏิทิน')).toBeTruthy()
+    expect(within(monthly).getByText('100.00')).toBeTruthy()
+    expect(screen.queryByText('เฉลี่ยต่อวันที่ใช้')).toBeNull()
+  })
+
   it('keeps fixed bills out of the daily calendar and daily total', async () => {
     await openCalendar()
     expect(screen.getByRole('heading', { name: 'ปฏิทิน', level: 1 })).toBeTruthy()

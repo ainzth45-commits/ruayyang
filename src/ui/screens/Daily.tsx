@@ -55,7 +55,11 @@ export function Daily() {
       ) : <>
       <section className="boxes" aria-label="สรุปใช้จ่ายรายวัน" style={{ marginBottom: 16 }}>
         <div className="box"><div className="l">ใช้ไปทั้งเดือน</div><div className="v gold">{formatBaht(total)}</div></div>
-        <div className="box"><div className="l">เฉลี่ยต่อวันที่ใช้</div><div className="v">{formatBaht(totals.size ? Math.round(total / totals.size) : 0)}</div></div>
+        <div className="box">
+          <div className="l">ยอดวันที่ดู</div>
+          <div className="v">{selected ? formatBaht(totals.get(selected) ?? 0) : '—'}</div>
+          <div className="s">{selected ? dateLabel(selected) : 'แตะเลือกวันในปฏิทิน'}</div>
+        </div>
       </section>
 
       <div className="cal" role="grid" aria-label="ปฏิทินรายจ่าย">

@@ -11,6 +11,7 @@ import { useAction, useApp, useLoad } from '../store'
 import { Money } from './Money'
 import { Sheet } from './Sheet'
 import { primeKeyboard } from '../viewport'
+import { EntrySheet } from './EntrySheet'
 
 const STEPS = ['รายการประจำ', 'คงเหลือจริง', 'สรุปเดือน', 'แยกเก็บ']
 
@@ -23,7 +24,9 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
   const [balText, setBalText] = useState<string | null>(null)
   const [negative, setNegative] = useState<boolean | null>(null)
   const [saveText, setSaveText] = useState<string | null>(null)
+  const [bill, setBill] = useState<MonthEntry | null>(null)
 
+  if (bill) return <EntrySheet key={bill.id} entry={bill} item={data?.items.find((i) => i.id === bill.itemId)} onClose={() => setBill(null)} />
   if (!data) return <Sheet title={`ปิดยอด ${monthLabel(month)}`} onClose={onClose}><div className="empty">กำลังโหลด…</div></Sheet>
 
   const s = data.summary
@@ -71,13 +74,13 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
 
       {step === 0 && (
         <>
-          <p className="muted step-lead">จ่ายรายการประจำให้ครบก่อน แก้ยอดประมาณให้เป็นยอดจริงแล้วแตะ ✓</p>
+          <p className="muted step-lead">จ่ายรายการประจำให้ครบก่อน · เปิดตรวจบิลเพื่อแนบหลักฐานและตรวจยอดสลิป</p>
           {open.length === 0 ? (
             <div className="done-note"><Check size={18} strokeWidth={2} /> จ่ายครบทุกรายการแล้ว</div>
           ) : (
             <div className="list">
               {open.map((e) => (
-                <OpenEntryRow key={`${e.id}-${e.amount}`} entry={e} item={itemById.get(e.itemId)} />
+                <OpenEntryRow key={`${e.id}-${e.amount}`} entry={e} item={itemById.get(e.itemId)} onEdit={() => setBill(e)} />
               ))}
             </div>
           )}
@@ -167,7 +170,7 @@ export function CloseMonthSheet({ month, onClose }: { month: MonthKey; onClose: 
 }
 
 /** รายการประจำที่ยังไม่จ่าย: แก้ยอดแล้วแตะ ✓ = จ่ายแล้ว */
-function OpenEntryRow({ entry, item }: { entry: MonthEntry; item: RecurringItem | undefined }) {
+function OpenEntryRow({ entry, item, onEdit }: { entry: MonthEntry; item: RecurringItem | undefined; onEdit: () => void }) {
   const { repo } = useApp()
   const { busy, run } = useAction()
   const [text, setText] = useState(formatBaht(entry.amount))
@@ -179,6 +182,7 @@ function OpenEntryRow({ entry, item }: { entry: MonthEntry; item: RecurringItem 
       <span>
         <div className="title">{item?.name ?? 'รายการที่ถูกลบ'}</div>
         <div className="meta-t">{isIncome ? 'รายรับ' : st === 'estimate' ? 'ยอดประมาณ' : 'รอจ่าย'}</div>
+        <button type="button" className="link" style={{ minHeight: 44, padding: '8px 0' }} onClick={onEdit} aria-label={`ตรวจบิลและแนบหลักฐาน ${item?.name ?? ''}`}>ตรวจบิล / แนบหลักฐาน</button>
       </span>
       <input className={`input num mini ${p.ok ? '' : 'err'}`} {...moneyInputProps} aria-label={`ยอด ${item?.name ?? ''}`} value={text} onChange={(e) => setText(e.target.value)} />
       <button

@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Repeat2, ScanLine } from 'lucide-react'
+import { ScanLine } from 'lucide-react'
 import { formatBaht } from '../../domain/money'
 import { addDays, bangkokToday, dateLabel, monthOf } from '../../domain/month'
-import { orderCategories, repeatSuggestions, type RepeatPick } from '../../domain/repeat'
+import { orderCategories } from '../../domain/repeat'
 import type { DateKey, Satang, Transaction } from '../../domain/types'
-import { CategoryIcon } from '../icons'
 import { compressImage, sha256Hex } from '../../ocr/image'
 import { readSlipAmount, warmUpOcr } from '../../ocr/ocr'
 import { play } from '../sound'
@@ -24,7 +23,7 @@ interface SlipState {
 }
 
 export function AddSheet({ onClose }: { onClose: () => void }) {
-  const { repo, toast, bump } = useApp()
+  const { repo, toast } = useApp()
   const { busy, run } = useAction()
   const today = bangkokToday()
   const base = useLoad(async () => {
@@ -93,31 +92,6 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
 
   const recent = base.data?.recent ?? []
   const categories = orderCategories(base.data?.categories ?? [], recent, today)
-  const catById = new Map((base.data?.categories ?? []).map((c) => [c.id, c]))
-  const picks = repeatSuggestions(recent, today, 6).filter((p) => catById.get(p.categoryId) && !catById.get(p.categoryId)?.archived)
-
-  /** จดซ้ำ: แตะเดียวบันทึกวันนี้ + ปุ่มเลิกทำ */
-  const saveRepeat = async (p: RepeatPick) => {
-    const tx = await run(async () => {
-      const t = await repo.addTransaction({ date: today, amount: p.amount, categoryId: p.categoryId, note: p.note, slipPath: null, slipHash: null, ocrAmount: null })
-      onClose()
-      return t
-    }, undefined, 'coin')
-    if (!tx) return
-    toast(`บันทึก ${p.note || catById.get(p.categoryId)?.name || ''} ${formatBaht(p.amount)} บาทแล้ว`, 'info', {
-      label: 'เลิกทำ',
-      run: () =>
-        repo
-          .deleteTransaction(tx.id)
-          .then(() => {
-            bump()
-            play('delete')
-            toast('เลิกทำแล้ว')
-          })
-          .catch((e: Error) => toast(e.message || 'เลิกทำไม่สำเร็จ', 'error')),
-    })
-  }
-
   const pickSlips = () => {
     warmUpOcr()
     fileRef.current?.click()
@@ -142,19 +116,6 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
   if (mode === 'manual') {
     return (
       <Sheet title="เพิ่มรายจ่ายรายวัน" onClose={onClose} verticalOnly>
-        {picks.length > 0 && (
-          <div className="repeat">
-            <div className="repeat-h"><Repeat2 size={14} strokeWidth={1.8} /> จดซ้ำ แตะเดียวบันทึกวันนี้</div>
-            <div className="chips">
-              {picks.map((p) => {
-                const c = catById.get(p.categoryId)
-                return <button key={`${p.categoryId}|${p.note}|${p.amount}`} type="button" className="chip-btn" disabled={busy} onClick={() => saveRepeat(p)}>
-                  <CategoryIcon name={c?.icon} size={15} /><span>{p.note || c?.name}</span><b>{formatBaht(p.amount, { decimals: p.amount % 100 !== 0 })}</b>
-                </button>
-              })}
-            </div>
-          </div>
-        )}
         {base.data ? <TxForm
           categories={categories}
           initial={{ amount: null, date: today, categoryId: null, note: null }}

@@ -2,7 +2,8 @@ import type { Repo } from './repo'
 import { cycleForDate } from '../domain/cycle'
 import { MAX_SATANG } from '../domain/money'
 import { monthEndDate } from '../domain/month'
-import type { Category, MonthEntry, MonthRecord, NewSaving, RecurringItem, Saving, Transaction, UserSettings } from '../domain/types'
+import { entryReceipts, validateReceiptEvidence, validateReceiptPayment } from '../domain/receipt'
+import type { Category, MonthEntry, MonthRecord, NewSaving, ReceiptCheckMode, ReceiptEvidence, RecurringItem, Saving, Transaction, UserSettings } from '../domain/types'
 
 /** ที่เก็บรูปสลิปของ LocalRepo (เบราว์เซอร์ใช้ IndexedDB, เทสใช้ Map) */
 export interface SlipStore {
@@ -167,25 +168,64 @@ export class LocalRepo implements Repo {
   }
 
   async insertEntriesIfAbsent(entries: Omit<MonthEntry, 'id'>[]) {
+    const next = this.clone(this.s)
     for (const e of entries) {
-      if (this.s.entries.some((x) => x.itemId === e.itemId && x.month === e.month)) continue
-      this.s.entries.push({ ...e, id: newLocalId() })
+      if (next.entries.some((x) => x.itemId === e.itemId && x.month === e.month)) continue
+      if (e.receipts != null) validateReceiptEvidence(e.receipts)
+      const row = { ...this.clone(e), ...(e.receipts == null ? {} : { receiptPath: e.receipts[0]?.path ?? null }), id: newLocalId() }
+      validateReceiptPayment(row, next.items.find((item) => item.id === row.itemId))
+      next.entries.push(row)
     }
-    this.save()
+    this.commit(next)
   }
 
   async updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note' | 'receiptPath'>>) {
     const next = this.clone(this.s)
     const row = next.entries.find((e) => e.id === id)
     if (!row) throw new Error('ไม่พบรายการนี้แล้ว')
-    Object.assign(row, patch)
+    if (patch.amount !== undefined) row.amount = patch.amount
+    if (patch.paid !== undefined) row.paid = patch.paid
+    if (patch.note !== undefined) row.note = patch.note
+    if (patch.receiptPath !== undefined && patch.receiptPath !== row.receiptPath) {
+      if (row.receipts != null) throw new Error('กรุณาแก้หลักฐานผ่านรายการรูปแนบ')
+      row.receiptPath = patch.receiptPath
+      row.receiptRevision = (row.receiptRevision ?? 0) + 1
+    }
+    validateReceiptPayment(row, next.items.find((item) => item.id === row.itemId), this.s.entries.find((entry) => entry.id === id))
     this.commit(next)
+  }
+
+  async saveEntryReceipts(entry: MonthEntry, receipts: ReceiptEvidence[], mode?: ReceiptCheckMode | null, payment?: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note'>>): Promise<MonthEntry> {
+    validateReceiptEvidence(receipts)
+    const revision = entry.receiptRevision ?? 0
+    if (!Number.isSafeInteger(revision) || revision < 0 || revision >= 2_147_483_647) throw new Error('เวอร์ชันหลักฐานไม่ถูกต้อง กรุณาโหลดใหม่')
+    const receiptMode = receipts.length === 0 ? null : mode === undefined ? entry.receiptMode ?? null : mode
+    if (receiptMode !== null && receiptMode !== 'sum' && receiptMode !== 'each') throw new Error('วิธีตรวจยอดหลักฐานไม่ถูกต้อง')
+    const next = this.clone(this.s)
+    const row = next.entries.find((e) => e.id === entry.id)
+    if (!row || (row.receiptRevision ?? 0) !== revision || (row.receiptPath ?? null) !== (entry.receiptPath ?? null)
+      || row.amount !== entry.amount || row.paid !== entry.paid || row.note !== entry.note) {
+      throw new Error('หลักฐานหรือรายการเปลี่ยนไปหรือถูกลบแล้ว กรุณาโหลดใหม่ก่อนแก้ไข')
+    }
+    row.receipts = this.clone(receipts)
+    row.receiptPath = receipts[0]?.path ?? null
+    row.receiptRevision = revision + 1
+    row.receiptMode = receiptMode
+    if (payment?.amount !== undefined) {
+      if (!Number.isSafeInteger(payment.amount) || payment.amount < 0 || payment.amount > MAX_SATANG) throw new Error('ยอดรายการไม่ถูกต้อง')
+      row.amount = payment.amount
+    }
+    if (payment?.paid !== undefined) row.paid = payment.paid
+    if (payment?.note !== undefined) row.note = payment.note
+    validateReceiptPayment(row, next.items.find((item) => item.id === row.itemId), this.s.entries.find((current) => current.id === entry.id))
+    this.commit(next)
+    return this.clone(row)
   }
 
   async deleteEntries(ids: string[]): Promise<string | null> {
     if (!ids.length) return null
     const set = new Set(ids)
-    const paths = [...new Set(this.s.entries.filter((e) => set.has(e.id)).map((e) => e.receiptPath).filter((p): p is string => !!p))]
+    const paths = [...new Set(this.s.entries.filter((e) => set.has(e.id)).flatMap((e) => [...entryReceipts(e).map((r) => r.path), ...(e.receiptPath ? [e.receiptPath] : [])]))]
     const next = this.clone(this.s)
     next.entries = next.entries.filter((e) => !set.has(e.id))
     this.commit(next)

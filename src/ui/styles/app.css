@@ -536,3 +536,16 @@ button.savings-card:active { transform: scale(.99); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* หลักฐานหลายใบ: รูปย่อทุกใบ + ขยายทีละรูป ไม่ต่อรูปใหญ่ยาวลงทั้งฟอร์ม */
+.receipt-panel, .receipt-panel fieldset { min-width: 0; overflow-wrap: anywhere; }
+.receipt-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-height: 168px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; padding: 2px; margin: 0 0 10px; }
+.receipt-tile { min-width: 0; min-height: 76px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text); }
+.receipt-tile[aria-pressed="true"] { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); background: var(--cream); }
+.receipt-tile .slip-thumb { height: 52px; max-height: 52px; margin: 0 0 3px; border-radius: 7px; }
+.receipt-tile > span { display: block; font-size: 11px; overflow-wrap: anywhere; }
+.receipt-selected { padding-bottom: 12px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+.receipt-selected > .slip-thumb { max-height: min(30dvh, 220px); margin-bottom: 8px; border-radius: 12px; }
+.receipt-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.receipt-tools .btn { min-width: 0; min-height: 44px; margin: 0; padding: 10px 8px; font-size: 13px; overflow-wrap: anywhere; }
+.receipt-reread { grid-column: 1 / -1; }

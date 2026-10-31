@@ -2,15 +2,28 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import type { Auth, AuthUser, Repo } from './repo'
 import { fromSatang, MAX_SATANG, toSatang } from '../domain/money'
 import { cycleForDate } from '../domain/cycle'
-import type { Category, MonthEntry, MonthKey, MonthRecord, NewEntry, NewSaving, NewTransaction, RecurringItem, Saving, Transaction, UserSettings } from '../domain/types'
+import { entryReceipts, validateReceiptEvidence } from '../domain/receipt'
+import type { Category, MonthEntry, MonthKey, MonthRecord, NewEntry, NewSaving, NewTransaction, ReceiptCheckMode, ReceiptEvidence, RecurringItem, Saving, Transaction, UserSettings } from '../domain/types'
 
 const toDate = (m: MonthKey) => `${m}-01`
 const toMonth = (d: string): MonthKey => d.slice(0, 7)
 const money = (v: number | string | null) => (v === null ? null : toSatang(v))
+const RECEIPT_ERRORS: Record<string, string> = {
+  receipt_payment_unreadable: 'ยังอ่านยอดหลักฐานไม่ได้ กรุณาอ่านใหม่หรือเปลี่ยนรูปก่อนบันทึกจ่ายแล้ว',
+  receipt_payment_mode_required: 'กรุณาเลือกวิธีตรวจยอดหลายสลิปก่อนบันทึกจ่ายแล้ว',
+  receipt_payment_mismatch: 'ยอดหลักฐานไม่ตรงกับยอดบิล กรุณาเปลี่ยนยอดหรือเปลี่ยนรูปก่อนบันทึกจ่ายแล้ว',
+  receipt_invalid_revision: 'หลักฐานเปลี่ยนไป กรุณาโหลดใหม่ก่อนแก้ไข',
+  receipt_first_path_mismatch: 'ข้อมูลรูปหลักฐานไม่ตรงกัน กรุณาโหลดใหม่ก่อนแก้ไข',
+  receipt_invalid_evidence: 'ข้อมูลหลักฐานไม่ถูกต้อง กรุณาโหลดใหม่ก่อนแก้ไข',
+  receipt_invalid_path: 'ข้อมูลรูปหลักฐานไม่ถูกต้อง กรุณาเลือกรูปใหม่',
+  receipt_invalid_amount: 'ยอดที่อ่านจากหลักฐานไม่ถูกต้อง กรุณาอ่านใหม่หรือเปลี่ยนรูป',
+}
 
 function fail(error: PostgrestError | Error | null, what: string): never {
   console.error(what, error)
   const msg = error?.message ?? ''
+  if ('code' in (error ?? {}) && (error as PostgrestError).code === '23514' && RECEIPT_ERRORS[msg]) throw new Error(RECEIPT_ERRORS[msg])
+  if ('code' in (error ?? {}) && ['PGRST204', '42703'].includes((error as PostgrestError).code)) throw new Error('ต้องอัปเดตฐานข้อมูลสำหรับหลักฐานหลายรูปก่อน กรุณาติดต่อผู้ดูแล')
   if ('code' in (error ?? {}) && (error as PostgrestError).code === '23505') throw new Error('ข้อมูลนี้มีอยู่แล้ว')
   if (/JWT|token|401/i.test(msg)) throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่')
   if (/fetch|network|Failed to/i.test(msg)) throw new Error('เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่')
@@ -34,6 +47,9 @@ const mapItem = (r: Row): RecurringItem => ({
 const mapEntry = (r: Row): MonthEntry => ({
   id: r.id, itemId: r.item_id, month: toMonth(r.month), amount: toSatang(r.amount), paid: r.paid, note: r.note,
   ...(r.receipt_path === undefined ? {} : { receiptPath: r.receipt_path }),
+  ...(r.receipts === undefined ? {} : { receipts: r.receipts }),
+  ...(r.receipt_revision === undefined ? {} : { receiptRevision: r.receipt_revision }),
+  ...(r.receipt_mode === undefined ? {} : { receiptMode: r.receipt_mode }),
 })
 const mapMonth = (r: Row): MonthRecord => ({
   month: toMonth(r.month),
@@ -199,10 +215,16 @@ export class SupabaseRepo implements Repo {
   async insertEntriesIfAbsent(entries: NewEntry[]) {
     if (!entries.length) return
     const user_id = await this.uid()
-    const rows = entries.map((e) => ({
-      user_id, item_id: e.itemId, month: toDate(e.month), amount: fromSatang(e.amount), paid: e.paid, note: e.note,
-      ...(e.receiptPath === undefined ? {} : { receipt_path: e.receiptPath }),
-    }))
+    const rows = entries.map((e) => {
+      if (e.receipts != null) validateReceiptEvidence(e.receipts)
+      return {
+        user_id, item_id: e.itemId, month: toDate(e.month), amount: fromSatang(e.amount), paid: e.paid, note: e.note,
+        ...(e.receiptPath === undefined ? {} : { receipt_path: e.receiptPath }),
+        ...(e.receipts === undefined ? {} : { receipts: e.receipts, ...(e.receipts === null ? {} : { receipt_path: e.receipts[0]?.path ?? null }) }),
+        ...(e.receiptRevision === undefined ? {} : { receipt_revision: e.receiptRevision }),
+        ...(e.receiptMode === undefined ? {} : { receipt_mode: e.receiptMode }),
+      }
+    })
     // แบ่ง batch กัน payload ใหญ่เกิน
     for (let i = 0; i < rows.length; i += 500) {
       const { error } = await this.sb
@@ -226,12 +248,36 @@ export class SupabaseRepo implements Repo {
   async deleteEntries(ids: string[]): Promise<string | null> {
     if (!ids.length) return null
     const entries = await this.allRows('โหลดหลักฐานรายการ', (start, end) => this.sb
-      .from('month_entries').select('receipt_path', { count: 'exact' }).in('id', ids).order('id').range(start, end))
-    const paths = [...new Set(entries.map((e) => e.receipt_path).filter((p): p is string => typeof p === 'string' && !!p))]
+      .from('month_entries').select('receipt_path,receipts', { count: 'exact' }).in('id', ids).order('id').range(start, end))
+    const paths = [...new Set(entries.flatMap((e) => [...entryReceipts({ receiptPath: e.receipt_path, receipts: e.receipts }).map((r) => r.path), ...(e.receipt_path ? [e.receipt_path as string] : [])]))]
     const { error } = await this.sb.from('month_entries').delete().in('id', ids)
     if (error) fail(error, 'ลบรายการ')
     const results = await Promise.allSettled(paths.map((path) => this.deleteSlip(path)))
     return results.some((r) => r.status === 'rejected') ? 'ลบรายการแล้ว แต่ลบรูปหลักฐานบางรูปไม่สำเร็จ' : null
+  }
+
+  async saveEntryReceipts(entry: MonthEntry, receipts: ReceiptEvidence[], mode?: ReceiptCheckMode | null, payment?: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note'>>): Promise<MonthEntry> {
+    validateReceiptEvidence(receipts)
+    const revision = entry.receiptRevision ?? 0
+    if (!Number.isSafeInteger(revision) || revision < 0 || revision >= 2_147_483_647) throw new Error('เวอร์ชันหลักฐานไม่ถูกต้อง กรุณาโหลดใหม่')
+    const receiptMode = receipts.length === 0 ? null : mode === undefined ? entry.receiptMode ?? null : mode
+    if (receiptMode !== null && receiptMode !== 'sum' && receiptMode !== 'each') throw new Error('วิธีตรวจยอดหลักฐานไม่ถูกต้อง')
+    const row: Row = { receipts, receipt_path: receipts[0]?.path ?? null, receipt_revision: revision + 1, receipt_mode: receiptMode }
+    if (payment?.amount !== undefined) {
+      if (!Number.isSafeInteger(payment.amount) || payment.amount < 0 || payment.amount > MAX_SATANG) throw new Error('ยอดรายการไม่ถูกต้อง')
+      row.amount = fromSatang(payment.amount)
+    }
+    if (payment?.paid !== undefined) row.paid = payment.paid
+    if (payment?.note !== undefined) row.note = payment.note
+    let query = this.sb.from('month_entries')
+      .update(row)
+      .eq('id', entry.id).eq('receipt_revision', revision)
+      .eq('amount', fromSatang(entry.amount)).eq('paid', entry.paid)
+    query = entry.note === null ? query.is('note', null) : query.eq('note', entry.note)
+    const { data, error } = await query.select('*').maybeSingle()
+    if (error) fail(error, 'บันทึกหลักฐาน')
+    if (!data) throw new Error('หลักฐานหรือรายการเปลี่ยนไปหรือถูกลบแล้ว กรุณาโหลดใหม่ก่อนแก้ไข')
+    return mapEntry(data)
   }
 
   async listTransactions(from: string, to: string) {

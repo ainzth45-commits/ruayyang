@@ -8,6 +8,8 @@ import type {
   NewSaving,
   NewTransaction,
   RecurringItem,
+  ReceiptCheckMode,
+  ReceiptEvidence,
   Satang,
   Saving,
   Transaction,
@@ -40,6 +42,8 @@ export interface Repo {
   /** ข้ามแถวที่ (itemId, month) ซ้ำ */
   insertEntriesIfAbsent(entries: NewEntry[]): Promise<void>
   updateEntry(id: string, patch: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note' | 'receiptPath'>>): Promise<void>
+  /** เปลี่ยนหลักฐานแบบตรวจ revision กันการเขียนทับรูปที่อีกหน้าบันทึกใหม่ */
+  saveEntryReceipts(entry: MonthEntry, receipts: ReceiptEvidence[], mode?: ReceiptCheckMode | null, payment?: Partial<Pick<MonthEntry, 'amount' | 'paid' | 'note'>>): Promise<MonthEntry>
   /** ลบแถวก่อนล้างหลักฐาน; คืนคำเตือนถ้าลบรายการแล้วแต่ล้างไฟล์ไม่ครบ */
   deleteEntries(ids: string[]): Promise<string | null>
 

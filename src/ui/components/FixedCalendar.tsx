@@ -4,8 +4,7 @@ import { entryStatus } from '../../domain/calc'
 import { monthLabel } from '../../domain/month'
 import type { MonthEntry, MonthKey, RecurringItem } from '../../domain/types'
 import { Money } from './Money'
-import { ReceiptAttachment } from './ReceiptAttachment'
-import { Sheet } from './Sheet'
+import { EntrySheet } from './EntrySheet'
 
 const STATUS_LABEL = { paid: 'จ่ายแล้ว', estimate: 'ยอดประมาณ', pending: 'รอจ่าย' } as const
 
@@ -50,14 +49,7 @@ export function FixedCalendar({ month, entries, items }: { month: MonthKey; entr
         </div>
       </div>
 
-      {selected && (
-        <Sheet title={itemById.get(selected.itemId)?.name ?? 'หลักฐานจ่ายประจำ'} onClose={() => setSelectedId(null)}>
-          <div className="ledger-line"><span>{monthLabel(month)}</span><Money v={selected.amount} /></div>
-          <p className="muted">{STATUS_LABEL[entryStatus(selected, itemById.get(selected.itemId))]} · แนบหลักฐานกับบิลเดิมได้โดยไม่เพิ่มรายจ่ายซ้ำ</p>
-          {selected.note && <p>{selected.note}</p>}
-          <ReceiptAttachment entry={selected} />
-        </Sheet>
-      )}
+      {selected && <EntrySheet key={selected.id} entry={selected} item={itemById.get(selected.itemId)} onClose={() => setSelectedId(null)} />}
     </>
   )
 }
