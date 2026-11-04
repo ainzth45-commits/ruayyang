@@ -34,6 +34,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
   const [picked, setPicked] = useState<File | null>(null)
   const [zoom, setZoom] = useState(false)
   const [slip, setSlip] = useState<SlipState | null>(null)
+  const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // อ่านสลิป: hash → เช็กซ้ำ → OCR (ยอด + วันที่)
@@ -115,11 +116,11 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
 
   if (mode === 'manual') {
     return (
-      <Sheet title="เพิ่มรายจ่ายรายวัน" onClose={onClose} verticalOnly>
+      <Sheet title="เพิ่มรายจ่ายรายวัน" onClose={onClose} verticalOnly footerRef={setFooterEl}>
         {base.data ? <TxForm
           categories={categories}
           initial={{ amount: null, date: today, categoryId: null, note: null }}
-          busy={busy} submitLabel="บันทึก" autoFocusAmount onSubmit={saveManual}
+          busy={busy} submitLabel="บันทึก" autoFocusAmount onSubmit={saveManual} pinSubmitTo={footerEl}
           amountExtra={<button type="button" className="scan-btn" onClick={pickSlips}><ScanLine size={17} strokeWidth={1.8} /> มีสลิป? สแกนให้อ่านยอดเอง</button>}
         /> : <div className="empty">{base.loading ? 'กำลังโหลด…' : <button className="btn ghost" onClick={base.reload}>ลองโหลดอีกครั้ง</button>}</div>}
         {fileInput}
@@ -134,7 +135,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
         : 'สลิปนี้เป็นค่าอะไร'
       : 'กำลังอ่านสลิป'
   return (
-    <Sheet title={title} onClose={onClose} verticalOnly>
+    <Sheet title={title} onClose={onClose} verticalOnly footerRef={setFooterEl}>
       {slip && (
         // รูปเล็กข้างตัวหนังสือ: ให้ทั้งฟอร์ม (ยอด/หมวด/วันที่) พอดีจอโดยไม่ต้องเลื่อน · แตะเพื่อดูเต็ม
         <button type="button" className={`slip-strip ${zoom ? 'zoom' : ''}`} onClick={() => setZoom(!zoom)} aria-label={zoom ? 'ย่อรูปสลิป' : 'ดูรูปสลิปเต็ม'}>
@@ -169,6 +170,7 @@ export function AddSheet({ onClose }: { onClose: () => void }) {
           submitLabel="บันทึก"
           autoFocusAmount={slip.ocrAmount === null}
           onSubmit={saveSlip}
+          pinSubmitTo={footerEl}
         />
       )}
     </Sheet>

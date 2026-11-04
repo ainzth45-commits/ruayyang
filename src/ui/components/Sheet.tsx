@@ -6,7 +6,14 @@ import { revealInScroller } from '../viewport'
 const CLOSE_DY = 90 // px
 const CLOSE_V = 0.6 // px/ms
 
-export function Sheet(props: { title: ReactNode; onClose: () => void; children: ReactNode; verticalOnly?: boolean }) {
+export function Sheet(props: {
+  title: ReactNode
+  onClose: () => void
+  children: ReactNode
+  verticalOnly?: boolean
+  /** รับ element ของแถบตรึงล่าง: อยู่นอกพื้นที่เลื่อน จึงไม่มีทางบังช่องกรอก */
+  footerRef?: (el: HTMLDivElement | null) => void
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
@@ -162,7 +169,8 @@ export function Sheet(props: { title: ReactNode; onClose: () => void; children: 
             </button>
           </div>
         </div>
-        <div className={`sheet-body${props.verticalOnly ? ' sheet-body-vertical' : ''}`} ref={bodyRef}>{props.children}</div>
+        <div className={`sheet-body${props.verticalOnly ? ' sheet-body-vertical' : ''}${props.footerRef ? ' has-footer' : ''}`} ref={bodyRef}>{props.children}</div>
+        {props.footerRef && <div className="sheet-footer" ref={props.footerRef} />}
       </div>
       </div>
     </>,

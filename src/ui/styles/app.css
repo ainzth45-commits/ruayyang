@@ -487,8 +487,18 @@ button.savings-card:active { transform: scale(.99); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .item-actions .btn + .btn { margin-top: 0; }
 
-/* Form actions stay in normal flow: no floating button can cover a date, note or picker. */
+/* Form actions stay in normal flow: no floating button can cover a date, note or picker.
+   ฟอร์ม + ตรึงปุ่มด้วยแถบแยกนอกพื้นที่เลื่อน (ไม่ใช่ sticky) จึงไม่ทับช่องกรอกเช่นกัน */
 .sheet .btn.primary { margin-top: 18px; }
+.sheet-body.has-footer { padding-bottom: 14px; }
+.sheet-footer { flex: none; margin: 0 -20px; padding: 12px 20px calc(12px + var(--safe-b)); background: #fff; border-top: 1px solid var(--line); }
+.sheet-footer:empty { padding-top: 0; border-top: 0; }
+html.kb-open .sheet-footer { padding-bottom: 10px; }
+.sheet .sheet-footer .btn.primary { margin-top: 0; }
+/* แนวนอน + แป้นเปิด จอเตี้ยเกินจะตรึงปุ่มไว้ด้วย: คืนที่ให้ฟอร์ม ปิดแป้นแล้วปุ่มกลับมา */
+@media (orientation: landscape) and (max-height: 540px) {
+  html.kb-open .sheet-footer { display: none; }
+}
 .sheet .step-nav { background: #fff; }
 .sheet .step-nav .btn.primary { margin-top: 0; }
 .sheet .btn.primary:disabled { opacity: 1; background: linear-gradient(135deg, #f1e9d8, #e9dcc0); color: rgba(29, 20, 6, .42); }

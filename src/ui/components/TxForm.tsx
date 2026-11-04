@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Check } from 'lucide-react'
 import { cycleForDate, transactionCycle } from '../../domain/cycle'
 import { addMonths, monthLabel, monthOf } from '../../domain/month'
@@ -28,8 +29,11 @@ export function TxForm(props: {
   /** ใต้ช่องยอด เช่น ปุ่มสแกนสลิป */
   amountExtra?: ReactNode
   dateLabel?: string
+  /** ย้ายปุ่มบันทึกไปแถบตรึงล่างของแผ่น · null = แถบยังไม่ mount (ไม่ระบุ = ปุ่มอยู่ท้ายฟอร์มตามปกติ) */
+  pinSubmitTo?: HTMLElement | null
 }) {
   const { repo } = useApp()
+  const formId = useId()
   const cycles = useLoad(() => repo.listMonths('2000-01', '9999-12'), [])
   const [amountText, setAmountText] = useState(props.initial.amount === null ? '' : formatBaht(props.initial.amount))
   const [date, setDate] = useState(props.initial.date)
@@ -55,8 +59,16 @@ export function TxForm(props: {
     props.onSubmit({ amount: parsed.value, date, categoryId, note: sanitizeText(note) || null, cycleMonth })
   }
 
+  const submitButton = (
+    <button className="btn primary" type="submit" form={formId} disabled={!canSave}>
+      <Check size={18} strokeWidth={2} />
+      {props.busy ? 'กำลังบันทึก…' : props.submitLabel}
+    </button>
+  )
+
   return (
     <form
+      id={formId}
       onSubmit={(e) => {
         e.preventDefault()
         submit()
@@ -111,10 +123,7 @@ export function TxForm(props: {
         </label>
       )}
       {!cycles.data && !cycles.loading && <button type="button" className="btn ghost" onClick={cycles.reload}>โหลดรอบเงินอีกครั้ง</button>}
-      <button className="btn primary" type="submit" disabled={!canSave}>
-        <Check size={18} strokeWidth={2} />
-        {props.busy ? 'กำลังบันทึก…' : props.submitLabel}
-      </button>
+      {props.pinSubmitTo === undefined ? submitButton : props.pinSubmitTo && createPortal(submitButton, props.pinSubmitTo)}
       {props.footer}
     </form>
   )
