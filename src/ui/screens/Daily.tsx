@@ -40,6 +40,8 @@ export function Daily() {
   const dayTxs = selected ? txs.filter((t) => t.date === selected) : txs
   const breakdown = categoryBreakdown(txs)
   const total = txs.reduce((a, t) => a + t.amount, 0)
+  // เฉลี่ยต่อ "วันที่ใช้เงิน" เท่านั้น: วันที่ไม่มีรายจ่ายไม่นับเป็นตัวหาร
+  const spendDays = [...totals.values()].filter((v) => v > 0).length
 
   return (
     <div className="page">
@@ -54,7 +56,15 @@ export function Daily() {
         <FixedCalendar key={month} month={month} entries={current.entries} items={current.items} />
       ) : <>
       <section className="boxes" aria-label="สรุปใช้จ่ายรายวัน" style={{ marginBottom: 16 }}>
-        <div className="box"><div className="l">ใช้ไปทั้งเดือน</div><div className="v gold">{formatBaht(total)}</div></div>
+        <div className="box">
+          <div className="l">ใช้ไปทั้งเดือน</div>
+          <div className="v gold">{formatBaht(total)}</div>
+          <div className="s">{spendDays ? <>
+            <span className="avg-part">{`เฉลี่ย ${formatBaht(Math.round(total / spendDays))}/วัน`}</span>
+            {' · '}
+            <span className="avg-part">{`ใช้ ${spendDays} วัน`}</span>
+          </> : 'ยังไม่มีรายจ่ายเดือนนี้'}</div>
+        </div>
         <div className="box">
           <div className="l">ยอดวันที่ดู</div>
           <div className="v">{selected ? formatBaht(totals.get(selected) ?? 0) : '—'}</div>

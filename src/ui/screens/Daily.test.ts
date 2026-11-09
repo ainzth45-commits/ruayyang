@@ -10,7 +10,9 @@ import { Daily } from './Daily'
 
 afterEach(cleanup)
 
-async function openCalendar() {
+const otherDay = (today: string) => `${monthOf(today)}-${today.endsWith('-01') ? '02' : '01'}`
+
+async function openCalendar(extra: { date: string; amount: number }[] = []) {
   const repo = new LocalRepo(memoryKV(), memorySlipStore())
   const today = bangkokToday()
   const month = monthOf(today)
@@ -29,6 +31,7 @@ async function openCalendar() {
     { itemId: rent.id, month: previous, amount: 50_000, paid: true, note: null },
   ])
   await repo.addTransaction({ date: today, amount: 10_000, categoryId: null, note: 'ข้าวเที่ยงทดสอบ', slipPath: null, slipHash: null, ocrAmount: null })
+  for (const t of extra) await repo.addTransaction({ ...t, categoryId: null, note: null, slipPath: null, slipHash: null, ocrAmount: null })
   const auth: Auth = {
     currentUser: async () => null,
     signIn: async () => ({ id: 'test', email: 'test@example.test' }),
@@ -44,7 +47,7 @@ describe('ปฏิทินแยกรายวันและจ่ายป�
   it('shows the viewed date amount, zero for an empty date, and a prompt when no date is selected', async () => {
     await openCalendar()
     const today = bangkokToday()
-    const emptyDate = `${monthOf(today)}-${today.endsWith('-01') ? '02' : '01'}`
+    const emptyDate = otherDay(today)
     const summary = screen.getByRole('region', { name: 'สรุปใช้จ่ายรายวัน' })
     const viewed = within(summary).getByText('ยอดวันที่ดู').parentElement as HTMLElement
     const monthly = within(summary).getByText('ใช้ไปทั้งเดือน').parentElement as HTMLElement
@@ -61,7 +64,26 @@ describe('ปฏิทินแยกรายวันและจ่ายป�
     expect(within(viewed).getByText('—')).toBeTruthy()
     expect(within(viewed).getByText('แตะเลือกวันในปฏิทิน')).toBeTruthy()
     expect(within(monthly).getByText('100.00')).toBeTruthy()
-    expect(screen.queryByText('เฉลี่ยต่อวันที่ใช้')).toBeNull()
+  })
+
+  it('shows the average per spending day under the month total, ignoring days with no spending', async () => {
+    await openCalendar([{ date: otherDay(bangkokToday()), amount: 3_333 }])
+    const summary = screen.getByRole('region', { name: 'สรุปใช้จ่ายรายวัน' })
+    const monthly = within(summary).getByText('ใช้ไปทั้งเดือน').parentElement as HTMLElement
+    expect(within(monthly).getByText('133.33')).toBeTruthy()
+    // 133.33 / 2 วันที่ใช้ = 66.665 → ปัดเป็นสตางค์ 66.67 · วันที่ไม่ได้ใช้ไม่นับเป็นตัวหาร
+    expect(monthly.querySelector('.s')?.textContent).toBe('เฉลี่ย 66.67/วัน · ใช้ 2 วัน')
+    // จอแคบตัดบรรทัดได้แค่ที่ " · " ไม่ให้ "ใช้" ค้างท้ายบรรทัดแยกจาก "2 วัน"
+    expect([...monthly.querySelectorAll('.s .avg-part')].map((e) => e.textContent)).toEqual(['เฉลี่ย 66.67/วัน', 'ใช้ 2 วัน'])
+  })
+
+  it('says there is no spending yet instead of a zero average for an empty month', async () => {
+    await openCalendar()
+    fireEvent.click(screen.getByRole('button', { name: 'เดือนก่อน' }))
+    const summary = await screen.findByRole('region', { name: 'สรุปใช้จ่ายรายวัน' })
+    await waitFor(() => expect(within(summary).getByText('ยังไม่มีรายจ่ายเดือนนี้')).toBeTruthy())
+    const monthly = within(summary).getByText('ใช้ไปทั้งเดือน').parentElement as HTMLElement
+    expect(within(monthly).getByText('0.00')).toBeTruthy()
   })
 
   it('keeps fixed bills out of the daily calendar and daily total', async () => {
